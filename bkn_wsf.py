@@ -255,6 +255,12 @@ def auth_registar_access(registered_ip, ds_id):
     response = wsf_request('auth/registrar/access', params)
     return response
 
+def dataset_delete(registered_ip, ds_id):
+    params = '&registered_ip=' + registered_ip
+    params += '&uri=' + urllib.quote_plus(get_dataset_root() + ds_id + '/')
+    response = wsf_request("dataset/delete", params, "get") 
+    return response
+
 def add_records(registered_ip, ds_id, rdf_str):
     ip = '&registered_ip=' + registered_ip
     ds = '&dataset=' + get_dataset_root() + urllib.quote_plus(ds_id) + '/'
@@ -349,6 +355,16 @@ def read_dataset(ip, ds_uri, other_params=None):
         response = convert_text_xml_to_json(ip, response)
     return response
 
+def get_dataset_ids(ip, other_params=None):
+    params = '&registered_ip='+ip+'&mode=dataset'
+    if (other_params): params += other_params
+    response = wsf_request("auth/lister", params, "get", 'text/xml')
+    if (type(response) is dict): # only an error would return dict
+        response = {'error': response}
+    else:
+        response = convert_text_xml_to_json(ip, response)
+    return response
+	
 def get_dataset_list(ip, other_params=None):    
 # it may be possible to avoid multiple calls by using '&uri=all' with read_dataset
 
@@ -385,6 +401,7 @@ def data_import(ip, ds_id, datasource):
     r = bibjson['recordList'][0]
     bib_import = {}
     bib_import['dataset'] = bibjson['dataset']
+    bib_import['dataset']['id'] = get_dataset_root() + urllib.quote_plus(ds_id) + '/'
 
 # SET TO TEST
     testlimit = 5
@@ -496,19 +513,18 @@ def wsf_test():
     #other_params += '&inference=off'
     #other_params += '&include_aggregates=true' # use if you want attrubute counts
     ds_id = '132'
-    ds_id = 'hku_test9'
-    ds_id = '130' 
     #response = create_and_import(ip, ds_id, 'in.json')
-    response = get_dataset_list(ip)
+    #response = get_dataset_list(ip)
     #response = read_dataset(ip, 'all') # returns bad json error
-    print 'Datasets:'
-    print simplejson.dumps(response, indent=2)
     #response = browse(ip, ds_id, 10, 0, other_params)     
-    response = search('pitman', ip, None, 25, 0, other_params) 
+    #response = search('pitman', ip, None, 25, 0, other_params) 
+    print 'BROWSE'
     print
+    response = browse(ip, ds_id, 10, 0, other_params)
     print simplejson.dumps(response, indent=2)
+    print
     
-    if ('recordList' in response):
+    if (('recordList' in response) and response['recordList']):
         # you can get total results by calling
         print 'facets'
         facets = get_result_facets(response)
