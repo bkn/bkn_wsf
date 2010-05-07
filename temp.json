@@ -1,0 +1,56 @@
+{
+  "recordList": [
+    {
+      "picture": "http://hub.hku.hk/researcherimage/rp00005", 
+      "name_abbr": "Corbet, EF", 
+      "name": "Corbet, Esmonde Francis", 
+      "source_owner": "The University of Hong Kong Libraries", 
+      "affiliation": {
+        "department": "Dental Faculty", 
+        "organization": "University of Hong Kong"
+      }, 
+      "isi_data": {
+        "hIndex": "13", 
+        "TimesCited": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://labs.researcherid.com/mashlets/rid/mashletsServer.jsp?rid=B-2144-2009&mid=CitationDistribution\">412</a>", 
+        "RID": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://www.researcherid.com/rid/B-2144-2009\">B-2144-2009</a>", 
+        "Co-authors": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://labs.researcherid.com/mashlets/rid/mashletsServer.jsp?rid=B-2144-2009&mid=CollaborationNetwork\">Collaboration Network</a>", 
+        "DocumentCount": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://www.researcherid.com/citation/B-2144-2009\">161</a>"
+      }, 
+      "source_url": "http://hub.hku.hk/rp/rp00005", 
+      "scopus_data": {
+        "hIndex": "13", 
+        "Citedby": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/author/citedby.url?origin=authorCitedBy&citedAuthorId=7004253530\">568</a>", 
+        "AuthorID": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/authid/detail.url?authorId=7004253530\">7004253530</a>", 
+        "Co-authors": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/search/submit/coAuthorSearch.url?authorId=7004253530&origin=AuthorProfile&sot=al&sdt=coaut&st1=Corbet&st2=Esmonde+F.\">135</a>", 
+        "DocumentCount": "<a target=\"_blank\" href=\"http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/search/submit/author.url?author=Corbet%2CEsmonde+F.&origin=AuthorProfile&authorId=7004253530\"> 65</a>"
+      }, 
+      "names": [
+        "Corbet, E. F.", 
+        "Corbet, EF"
+      ], 
+      "source_title": "HKU ResearcherPage - Corbet, EF", 
+      "name_prefix": "Prof", 
+      "id": "rp00005"
+    }
+  ], 
+  "dataset": {
+    "id": "http://people.bibkn.org/wsf/datasets/test100506/", 
+    "linkage": [
+      {
+        "typeList": {
+          "Person": {
+            "mapTo": "http://xmlns.com/foaf/0.1/Person"
+          }
+        }, 
+        "linkedType": "application/rdf+xml", 
+        "attributeList": {
+          "homepage": {
+            "mapTo": "http://xmlns.com/foaf/0.1/homepage"
+          }
+        }
+      }, 
+      "http://www.bibkn.org/drupal/bibjson/iron_linkage.json"
+    ], 
+    "schema": "http://www.bibkn.org/drupal/bibjson/bibjson_schema.json"
+  }
+}

@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<rdf:RDF  xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:iron="http://purl.org/ontology/iron#" xmlns:ns0="http://www.bibkn.org/wsf/ontology/types/" xmlns:ns1="http://www.bibkn.org/wsf/ontology/properties/">
+
+
+    <ns0:Object rdf:about="http://people.bibkn.org/wsf/datasets/test100506/rp00005">
+        <ns1:picture>http://hub.hku.hk/researcherimage/rp00005</ns1:picture>
+        <ns1:name_abbr>Corbet, EF</ns1:name_abbr>
+        <ns1:name>Corbet, Esmonde Francis</ns1:name>
+        <ns1:source_owner>The University of Hong Kong Libraries</ns1:source_owner>
+        <ns1:affiliation rdf:resource="http://www.bibkn.org/wsf/irs/fd5fec3a9fc86faa9afb8bfba7deeafa" />
+        <ns1:isi_data rdf:resource="http://www.bibkn.org/wsf/irs/9df2f19198d5346d3d189a9885ef8edb" />
+        <ns1:source_url>http://hub.hku.hk/rp/rp00005</ns1:source_url>
+        <ns1:scopus_data rdf:resource="http://www.bibkn.org/wsf/irs/373f7bbe2c7b7f146b02bee4a31027e3" />
+        <ns1:names>Corbet, E. F.</ns1:names>
+        <ns1:names>Corbet, EF</ns1:names>
+        <ns1:source_title>HKU ResearcherPage - Corbet, EF</ns1:source_title>
+        <ns1:name_prefix>Prof</ns1:name_prefix>
+    </ns0:Object>
+    <rdf:Statement rdf:about="25ad6559f6f6006a99c2ef8489de1fa5">
+        <rdf:subject rdf:resource="http://people.bibkn.org/wsf/datasets/test100506/rp00005" />
+        <rdf:predicate rdf:resource="http://www.bibkn.org/wsf/ontology/properties/affiliation" />
+        <rdf:object rdf:resource="http://www.bibkn.org/wsf/irs/fd5fec3a9fc86faa9afb8bfba7deeafa" />
+        <ns1:department>Dental Faculty</ns1:department>
+        <ns1:organization>University of Hong Kong</ns1:organization>
+    </rdf:Statement>  
+
+    <rdf:Statement rdf:about="55faabae9d191b81327d7f4d611615f8">
+        <rdf:subject rdf:resource="http://people.bibkn.org/wsf/datasets/test100506/rp00005" />
+        <rdf:predicate rdf:resource="http://www.bibkn.org/wsf/ontology/properties/isi_data" />
+        <rdf:object rdf:resource="http://www.bibkn.org/wsf/irs/9df2f19198d5346d3d189a9885ef8edb" />
+        <ns1:hIndex>13</ns1:hIndex>
+        <ns1:TimesCited>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://labs.researcherid.com/mashlets/rid/mashletsServer.jsp?rid=B-2144-2009&amp;mid=CitationDistribution"&gt;412&lt;/a&gt;</ns1:TimesCited>
+        <ns1:RID>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://www.researcherid.com/rid/B-2144-2009"&gt;B-2144-2009&lt;/a&gt;</ns1:RID>
+        <ns1:Co-authors>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://labs.researcherid.com/mashlets/rid/mashletsServer.jsp?rid=B-2144-2009&amp;mid=CollaborationNetwork"&gt;Collaboration Network&lt;/a&gt;</ns1:Co-authors>
+        <ns1:DocumentCount>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://www.researcherid.com/citation/B-2144-2009"&gt;161&lt;/a&gt;</ns1:DocumentCount>
+    </rdf:Statement>  
+
+    <rdf:Statement rdf:about="b5e2beebd895d60d2b739dafb6708500">
+        <rdf:subject rdf:resource="http://people.bibkn.org/wsf/datasets/test100506/rp00005" />
+        <rdf:predicate rdf:resource="http://www.bibkn.org/wsf/ontology/properties/scopus_data" />
+        <rdf:object rdf:resource="http://www.bibkn.org/wsf/irs/373f7bbe2c7b7f146b02bee4a31027e3" />
+        <ns1:hIndex>13</ns1:hIndex>
+        <ns1:Citedby>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/author/citedby.url?origin=authorCitedBy&amp;citedAuthorId=7004253530"&gt;568&lt;/a&gt;</ns1:Citedby>
+        <ns1:AuthorID>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/authid/detail.url?authorId=7004253530"&gt;7004253530&lt;/a&gt;</ns1:AuthorID>
+        <ns1:Co-authors>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/search/submit/coAuthorSearch.url?authorId=7004253530&amp;origin=AuthorProfile&amp;sot=al&amp;sdt=coaut&amp;st1=Corbet&amp;st2=Esmonde+F."&gt;135&lt;/a&gt;</ns1:Co-authors>
+        <ns1:DocumentCount>&lt;a target="_blank" href="http://eproxy.lib.hku.hk/login?url=http://www.scopus.com/search/submit/author.url?author=Corbet%2CEsmonde+F.&amp;origin=AuthorProfile&amp;authorId=7004253530"&gt; 65&lt;/a&gt;</ns1:DocumentCount>
+    </rdf:Statement>  
+
+</rdf:RDF>

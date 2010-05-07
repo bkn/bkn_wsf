@@ -14,6 +14,19 @@ import urllib
 import urllib2
 import simplejson
 
+
+wsf_service_root = 'http://www.bibkn.org/wsf/ws/'
+def get_wsf_service_root ():
+    return wsf_service_root
+
+dataset_root = 'http://people.bibkn.org/wsf/datasets/'
+def get_dataset_root ():
+    return dataset_root
+def set_dataset_root (rootpath):
+    global dataset_root
+    dataset_root = rootpath
+
+
 def wsf_request (service, params, http_method="post", accept_header="application/json"):
     deb = 0
     if (service[-1] != '/'): service += '/'        
@@ -50,22 +63,16 @@ def wsf_request (service, params, http_method="post", accept_header="application
         
     if deb: print '\nWSF CALL RESPONSE:\n', response
     try:
-        if (response and (type(response) is not dict) and (response_format == "json")):
+        if (response and (not isinstance(response, dict)) and (response_format == "json")):
             response = simplejson.loads(response)
     except: # this catches url and http errors        
         print 'BAD JSON:'
-        if (type(response) is not dict): print response.replace('\\n','\n')
+        if (not isinstance(response, dict)): print response.replace('\\n','\n')
         response = {'error':'simplejsonError','reason':'bad json', "response":response}
     
     #print '\nWSF CALL RESPONSE:\n', response        
     return response
 
-
-def get_wsf_service_root ():
-    return 'http://www.bibkn.org/wsf/ws/'
-
-def get_dataset_root ():
-    return "http://people.bibkn.org/wsf/datasets/"
 
 def strip_key_prefix(k):
     return re.sub('.*:','', k)
@@ -123,7 +130,7 @@ def convert_text_xml_to_json(registered_ip, data):
     doc = "&document="+urllib.quote_plus(data)
     params = ip + mime + doc
     response = wsf_request("converter/irjson/", params, "post",'bibjson')    
-    if (type(response) is not dict): # only an error would return dict
+    if (not isinstance(response,dict)): # only an error would return dict
         response = {'error':response}
     return response     
 
@@ -173,7 +180,7 @@ def convert_rdfjson_to_json(rdfjson):
                         for attribute in p:
                             k = strip_key_prefix(attribute)
                             if (k in ds):
-                                if (type(ds[k]) != list):
+                                if (not isinstance(ds[k],list)):
                                     ds[k] = [ds[k]] # convert to list
                                 ds[k].append(p[attribute])
                             else:
@@ -219,7 +226,7 @@ def convert_subject_to_json(rdfjson):
                         for attribute in p:
                             k = strip_key_prefix(attribute)
                             if (k in ds):
-                                if (type(ds[k]) != list):
+                                if (not isinstance(ds[k],list)):
                                     ds[k] = [ds[k]] # convert to list
                                 ds[k].append(p[attribute])
                             else:
@@ -270,6 +277,25 @@ def add_records(registered_ip, ds_id, rdf_str):
     response = wsf_request("crud/create", params,"post",'*/*')
     return response
 
+def update_record(registered_ip, ds_id, bibjson):
+    rdf_str = convert_json_to_rdf(registered_ip, bibjson)
+    if(isinstance(rdf_str,dict) ):
+        print 'ERROR: update_record: BIBJSON TO RDF FAILED'
+        print simplejson.dumps(rdf_str, indent=2)
+        response = rdf_str
+    else:    
+        params = '&registered_ip=' + registered_ip
+        if (ds_id[0:7] == 'http://'):           #allow ds_id to be a uri or id
+            params += '&dataset=' + ds_id
+            if (params[:-1] != '/'):
+                params += '/'
+        else:
+            params += '&dataset=' + get_dataset_root() + urllib.quote_plus(ds_id) + '/'
+        params += "&mime="+urllib.quote_plus("application/rdf+xml")
+        params += "&document="+rdf_str
+        response = wsf_request("crud/update", params,"post",'*/*')
+    return response
+
 def read_record(rid, registered_ip=None, ds_id=None, other_params=None):
     ds_uri = get_dataset_root() + urllib.quote_plus(ds_id) + '/'
     params = '&include_linksback=True&include_reification=True'
@@ -283,7 +309,7 @@ def read_record(rid, registered_ip=None, ds_id=None, other_params=None):
 
 def get_detailed_response(registered_ip, response):
     ip = '&registered_ip=' + registered_ip
-    if (type(response) is not dict): # only an error would return dict    
+    if (not isinstance(response, dict)): # only an error would return dict    
         response = convert_text_xml_to_json(ip, response)   
 
     if ('error' in response):
@@ -351,7 +377,7 @@ def read_dataset(ip, ds_uri, other_params=None):
         params += '&meta=True' + '&mode=dataset'
         
     response = wsf_request("dataset/read/",params,"get", 'text/xml')
-    if (type(response) is not dict): # only an error would return dict
+    if (not isinstance(response,dict)):
         response = convert_text_xml_to_json(ip, response)
     return response
 
@@ -359,7 +385,7 @@ def get_dataset_ids(ip, other_params=None):
     params = '&registered_ip='+ip+'&mode=dataset'
     if (other_params): params += other_params
     response = wsf_request("auth/lister", params, "get", 'text/xml')
-    if (type(response) is dict): # only an error would return dict
+    if (isinstance(response,dict)): # only an error would return dict
         response = {'error': response}
     else:
         response = convert_text_xml_to_json(ip, response)
@@ -372,7 +398,7 @@ def get_dataset_list(ip, other_params=None):
     params = '&registered_ip='+ip+'&mode=dataset'
     if (other_params): params += other_params
     response = wsf_request("auth/lister", params, "get", 'text/xml')
-    if (type(response) is dict): # only an error would return dict
+    if (isinstance(response,dict)):
         ds_list['error'] = response
     else:
         response = convert_text_xml_to_json(ip, response)
@@ -512,28 +538,39 @@ def wsf_test():
     # They are here to make it easier for you to add one or more to a service call.
     #other_params += '&inference=off'
     #other_params += '&include_aggregates=true' # use if you want attrubute counts
-    ds_id = '132'
-    #response = create_and_import(ip, ds_id, 'in.json')
+    #response = get_dataset_ids(ip)
     #response = get_dataset_list(ip)
+    ds_id = '129'
+
+    #response = create_and_import(ip, ds_id, 'in.json')
     #response = read_dataset(ip, 'all') # returns bad json error
-    #response = browse(ip, ds_id, 10, 0, other_params)     
-    #response = search('pitman', ip, None, 25, 0, other_params) 
-    print 'BROWSE'
-    print
-    response = browse(ip, ds_id, 10, 0, other_params)
+    #response = browse(ip, ds_id, 10, 0, other_params)  
+    
+    #WHEN THIS UPDATE WAS CHECKED-IN SEARCH DID NOT WORK BUT IT IS BELIEVED TO BE DUE TO WSF   
+    #response = search('Pitman', ip, None, 25, 0, other_params) 
+    #other_params = '&types='+'Person'
+    #ds_id = 'hong_kong_university'
+    response = browse(ip, ds_id, 12, 0, other_params)
+
+    ds_id = '181'
+    rid_root = 'http://www.bibkn.org/conStruct/datasets/181/resource/'
+    #set_dataset_root('http://www.bibkn.org/wsf/datasets/')
+    #response = read_record(rid_root+'Stanford', ip, ds_id)
+    
     print simplejson.dumps(response, indent=2)
     print
     
     if (('recordList' in response) and response['recordList']):
         # you can get total results by calling
-        print 'facets'
         facets = get_result_facets(response)
-        print simplejson.dumps(facets, indent=2)
-        print '\nNOTE: not all things are people. See facets[\"type\"]'
-        print 'for  counts: (there are a few things to check)'
-        print '\t owl_Thing - \t should represent everything if it exists'
-        print '\t Object - \t not sure why this does not represent everything'
-        print '\t Person - \t just people'
+        if (facets):
+            print 'facets'
+            print simplejson.dumps(facets, indent=2)
+            print '\nNOTE: not all things are people. See facets[\"type\"]'
+            print 'for  counts: (there are a few things to check)'
+            print '\t owl_Thing - \t should represent everything if it exists'
+            print '\t Object - \t not sure why this does not represent everything'
+            print '\t Person - \t just people'
 
 
 #wsf_test()
