@@ -15,9 +15,12 @@ import urllib2
 import simplejson
 
 
-wsf_service_root = 'http://www.bibkn.org/wsf/ws/'
+wsf_service_root = 'http://people.bibkn.org/wsf/ws/'
 def get_wsf_service_root ():
     return wsf_service_root
+def set_wsf_service_root (rootpath):
+    global wsf_service_root
+    wsf_service_root = rootpath
 
 dataset_root = 'http://people.bibkn.org/wsf/datasets/'
 def get_dataset_root ():
@@ -29,8 +32,12 @@ def set_dataset_root (rootpath):
 
 def wsf_request (service, params, http_method="post", accept_header="application/json"):
     deb = 0
-    if (service[-1] != '/'): service += '/'        
+    if (service[-1] != '/'): service += '/' 
+    # as of 6/8/10 the service root to call services uses /ws/
+    # and the service root when referring to a service is /wsf/ws/
+    # so the following is a temporary patch       
     s = 'http://people.bibkn.org/ws/'+ service
+    #s = get_wsf_service_root() + service
     p = params
     response_format = "json"
     header = {"Accept": accept_header}
@@ -114,7 +121,7 @@ def get_result_facets(response):
                         
     return facets
     
-                
+            
 
 def convert_bibtex_to_text_xml(registered_ip, data):
     ip = '&registered_ip=' + registered_ip
@@ -150,93 +157,10 @@ def convert_json_to_rdf(registered_ip, data):
     response = wsf_request("converter/irjson/", params, "post","application/rdf+xml")
     return response
 
-def convert_rdfjson_to_json(rdfjson):
-    # This is a rough method to convert an rdf style json to more familiar json
-    # This was based on the structure of a search result that returns 'application/json'.
-    irjson = {}
-    irjson['dataset'] = {}
-    if ('prefixes' in rdfjson):
-        irjson['dataset']['prefixes'] = rdfjson['prefixes']
-    irjson['recordList']= []
-    
-    
-    # NOTE: RDFJSON COULD ALSO HAVE attribute 'subject' or 'subjects' (with an s suffix)
-    # same for predicates
-    # for now just handling 'subjects' and 'predicates'
-    
-    #ALSO return should be recordList not resultset
-    
-    if ('resultset' in rdfjson) and ('subjects' in rdfjson['resultset']):
-        rdf_subjects = rdfjson['resultset']['subjects']
-
-        for s in rdf_subjects:
-            
-            ds = {}
-            for rdfkey in s:
-                if (rdfkey != 'predicates'):
-                    ds[rdfkey] = s[rdfkey]
-                else:            
-                    for p in s['predicates']:                       
-                        for attribute in p:
-                            k = strip_key_prefix(attribute)
-                            if (k in ds):
-                                if (not isinstance(ds[k],list)):
-                                    ds[k] = [ds[k]] # convert to list
-                                ds[k].append(p[attribute])
-                            else:
-                                ds[k] = p[attribute]
-            irjson['recordList'].append(ds)
-    return irjson
-
-'''
-
-FOLLOWING IS A VERY TEMPORARY HACK (hopefully). 
-
-It is a copy of the above function except that 'subject' rather than 'subjects' is parsed.
- and 'predicate' vs 'predicates'
-
-'''
-def convert_subject_to_json(rdfjson):
-    # This is a rough method to convert 'application/rdf+xml' to more familiar json
-    # This was based on the structure of a search result that returns 'application/json'.
-    irjson = {}
-    irjson['dataset'] = {}
-    if ('prefixes' in rdfjson):
-        irjson['dataset']['prefixes'] = rdfjson['prefixes']
-    irjson['recordList']= []
-    
-    
-    # NOTE: RDFJSON COULD ALSO HAVE attribute 'subject' or 'subjects' (with an s suffix)
-    # same for predicates
-    # for now just handling 'subjects' and 'predicates'
-    
-    #ALSO return should be recordList not resultset
-
-    if ('resultset' in rdfjson) and ('subject' in rdfjson['resultset']):
-        rdf_subjects = rdfjson['resultset']['subject']
-
-        for s in rdf_subjects:
-            
-            ds = {}
-            for rdfkey in s:
-                if (rdfkey != 'predicate'):
-                    ds[rdfkey] = s[rdfkey]
-                else:            
-                    for p in s['predicate']:                       
-                        for attribute in p:
-                            k = strip_key_prefix(attribute)
-                            if (k in ds):
-                                if (not isinstance(ds[k],list)):
-                                    ds[k] = [ds[k]] # convert to list
-                                ds[k].append(p[attribute])
-                            else:
-                                ds[k] = p[attribute]
-            irjson['recordList'].append(ds)
-    return irjson
-
 
 def dataset_create(registered_ip, ds_id, title, description=None, creator=None):
     ip = '&registered_ip=' + registered_ip
+    #ds = '&uri=' + urllib.quote_plus(get_dataset_root() + ds_id + '/')
     ds = '&uri=' + urllib.quote_plus(get_dataset_root() + ds_id + '/')
     params = ip + ds + '&title=' + urllib.quote_plus(title)
     if (description): params += '&description=' + urllib.quote_plus(description)
@@ -477,13 +401,12 @@ EXAMPLES
 To try an example copy and paste one of the 'response=' lines to the end of the
 above the simplejson.dumps() call
 
-    REGISTER FOR AN ACCOUNT: http://bibkn.org/drupal/user/register (this is not correct)
-    LOGIN: http://www.bibkn.org/user
+    REGISTER FOR AN ACCOUNT: http://people.bibkn.org/drupal/user/register
+    LOGIN:                   http://people.bibkn.org/user
     REGISTER AN EXTERNAL IP: http://people.bibkn.org/drupal/admin/settings/conStruct/access/
     ----------------------------------------------------
     dataset = 135 # sandbox
     dataset = 117 # AuthorClaim
-    dataset = 159 # Hong Kong
     dataset = 130 # IMS Fellows
     dataset = 115 # Math Genealogy - just urls
     dataset = 119 # Math Genealogy - complete
@@ -500,15 +423,22 @@ above the simplejson.dumps() call
     response = browse(ip, ds_id, 10, 0, other_params)     
 
     # SEARCH
-    # returns dict - JSON with only a few attributes
-    # to get more data for each result use read_records()
+    # does search, then read_record for each record
     response = search('Pitman', ip, None, 10, 0, other_params) 
     
     # READ RECORDS
-    # WORKAROUND ISSUE 98 BAD JSON RETURN FROM CONVERTER
+    r['id'] = 'name_of_dataset' # not the full url
     data = read_record(r['id'], registered_ip, ds_id)
 
+    # CREATE AND IMPORT A DATASET
+    ip = 'your_ip_address'
+    ds_id = 'your_dataset_name'
+    bibjson_file = 'your_bibjson_file'
+    response = create_and_import(ip, ds_id, bibjson_file)
+
     # CREATE DATASET
+    ip = 'your_ip_address'
+    ds_id = 'your_dataset_name'
     response = dataset_create(ip, ds_id, 'jack test', 'small test of create and import')
 
     # SET PERMISSONS
@@ -531,31 +461,21 @@ above the simplejson.dumps() call
 '''
 
 def wsf_test():
-    #ip = "67.20.80.37" # wiggleback.com bluehost server    
-    ip = "66.92.4.19"  # Jack's Mac
+    '''
+        TO SEE HTTP REQUEST/RESPONSE set 
+        deb = 1 in the wsf_request function        
+    '''
+    
+    
     other_params = ''
-    # These are a few optional parameters used by some services.
-    # They are here to make it easier for you to add one or more to a service call.
-    #other_params += '&inference=off'
-    #other_params += '&include_aggregates=true' # use if you want attrubute counts
+    ip = "66.92.4.19"  # Jack's Mac
+    ds_id = 'jack_import_test13'
     #response = get_dataset_ids(ip)
     #response = get_dataset_list(ip)
-    ds_id = '129'
-
     #response = create_and_import(ip, ds_id, 'in.json')
     #response = read_dataset(ip, 'all') # returns bad json error
-    #response = browse(ip, ds_id, 10, 0, other_params)  
-    
-    #WHEN THIS UPDATE WAS CHECKED-IN SEARCH DID NOT WORK BUT IT IS BELIEVED TO BE DUE TO WSF   
-    #response = search('Pitman', ip, None, 25, 0, other_params) 
-    #other_params = '&types='+'Person'
-    #ds_id = 'hong_kong_university'
-    response = browse(ip, ds_id, 12, 0, other_params)
-
-    ds_id = '181'
-    rid_root = 'http://www.bibkn.org/conStruct/datasets/181/resource/'
-    #set_dataset_root('http://www.bibkn.org/wsf/datasets/')
-    #response = read_record(rid_root+'Stanford', ip, ds_id)
+    #response = browse(ip, ds_id, 10, 0, other_params)      
+    response = search('Pitman', ip, None, 25, 0, other_params) 
     
     print simplejson.dumps(response, indent=2)
     print
@@ -571,6 +491,5 @@ def wsf_test():
             print '\t owl_Thing - \t should represent everything if it exists'
             print '\t Object - \t not sure why this does not represent everything'
             print '\t Person - \t just people'
-
 
 #wsf_test()
