@@ -8,13 +8,13 @@
 # For more information see,
 #     http://openstructs.org/structwsf
 
-import re
+import re, os
 import codecs
 import urllib
 import urllib2
 import simplejson
 
-
+#print os.getcwd()
 wsf_service_root = 'http://people.bibkn.org/wsf/ws/'
 def get_wsf_service_root ():
     return wsf_service_root
@@ -52,6 +52,9 @@ def wsf_request (service, params, http_method="post", accept_header="application
     if deb: print '\n\nHEADER:\n', header
     if deb: print '\nREQUEST: \n',s+'?'+p
     response = None
+    #print s+"?"+p
+    #print header
+    
     try:
         if (http_method == "get"):
             req = urllib2.Request(s+"?"+p, headers = header)        
@@ -179,7 +182,13 @@ def auth_registar_access(registered_ip, ds_id):
     services += wsf_service_root+'crud/update/;'
     services += wsf_service_root+'crud/delete/;'
     services += wsf_service_root+'search/;'
-    services += wsf_service_root+'browse/'
+    services += wsf_service_root+'browse/;'
+    services += wsf_service_root+'dataset/read/;'
+    services += wsf_service_root+'datast/delete/;'
+    services += wsf_service_root+'dataset/create/;'
+    services += wsf_service_root+'dataset/update/;'
+    services += wsf_service_root+'converter/irjson/;'
+    services += wsf_service_root+'sparql/'
     permissions = '&crud='+urllib.quote_plus('True;True;True;True')
     action = '&action=create'
     params += urllib.quote_plus(services) + permissions + action
@@ -314,7 +323,7 @@ def get_dataset_ids(ip, other_params=None):
     else:
         response = convert_text_xml_to_json(ip, response)
     return response
-	
+
 def get_dataset_list(ip, other_params=None):    
 # it may be possible to avoid multiple calls by using '&uri=all' with read_dataset
 
@@ -354,7 +363,7 @@ def data_import(ip, ds_id, datasource):
     bib_import['dataset']['id'] = get_dataset_root() + urllib.quote_plus(ds_id) + '/'
 
 # SET TO TEST
-    testlimit = 5
+    testlimit = None
     count = 0
     status = {'code': 'ok'}
     for r in bibjson['recordList']:
@@ -365,8 +374,8 @@ def data_import(ip, ds_id, datasource):
 
         bib_import['recordList'] = []
         bib_import['recordList'].append(r)
-        
-        f_hku = open('temp.json','w')    
+        #print bib_import
+        f_hku = open('/Users/Jim/Desktop/temp.json','w')    
         f_hku.write(simplejson.dumps(bib_import, indent=2))
         f_hku.close()
     
@@ -376,12 +385,15 @@ def data_import(ip, ds_id, datasource):
         f_hku.write(xml)
         f_hku.close()
         '''      
+        
+        #rdf = convert_json_to_text_xml(ip, bib_import)
         rdf = convert_json_to_rdf(ip, bib_import)
-        f_hku = open('temp.rdf.xml','w')    
-        f_hku.write(rdf)
+        #print rdf
+        f_hku = open('/Users/Jim/Desktop/temp.rdf.xml','w')    
+        f_hku.write(str(rdf))
         f_hku.close()       
         
-        response = add_records(ip, ds_id, rdf)
+        response = add_records(ip, ds_id, str(rdf))
     return status
             
 def create_and_import (ip, ds_id, datasource, title=None, description=''):
