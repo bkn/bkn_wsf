@@ -9,6 +9,7 @@
 #     http://openstructs.org/structwsf
 
 import re, os, logging
+from logging import handlers
 import codecs
 import urllib
 import urllib2
@@ -25,7 +26,7 @@ formatter = logging.Formatter("%(asctime)s - %(name)s\
 # add formatter to ch
 ch.setFormatter(formatter)
 logger = logging.getLogger()
-self.log.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 #handler writes to file
 log_filepath = os.path.join(base_path, "log.txt")
 handler = logging.handlers.RotatingFileHandler(\
@@ -393,9 +394,7 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
         bib_import['recordList'] = []
         bib_import['recordList'].append(r)
         #print bib_import
-        f_hku = open(os.path.join(base_path,'temp.json','w')    
-        f_hku.write(simplejson.dumps(bib_import, indent=2))
-        f_hku.close()
+        f_hku = open(os.path.join(base_path,'temp.json','w'))
     
         '''
         xml = convert_json_to_text_xml(ip, bib_import)
@@ -407,7 +406,7 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
         #rdf = convert_json_to_text_xml(ip, bib_import)
         rdf = convert_json_to_rdf(ip, bib_import)
         #print rdf
-        f_hku = open(os.path.join(base_path,'temp.rdf.xml','w')    
+        f_hku = open(os.path.join(base_path,'temp.rdf.xml','w'))
         f_hku.write(str(rdf))
         f_hku.close()       
         
