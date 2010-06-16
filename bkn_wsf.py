@@ -8,21 +8,41 @@
 # For more information see,
 #     http://openstructs.org/structwsf
 
-import re, os
+import re, os, logging
 import codecs
 import urllib
 import urllib2
 import simplejson
+#TODO : add parameter to print curl pasteable command
+
+#Setting up logging
+#StreamHandler writes to stdout
+base_path = os.path.abspath("")
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(name)s\
+ - %(levelname)s - %(message)s")
+# add formatter to ch
+ch.setFormatter(formatter)
+logger = logging.getLogger()
+self.log.setLevel(logging.DEBUG)
+#handler writes to file
+log_filepath = os.path.join(base_path, "log.txt")
+handler = logging.handlers.RotatingFileHandler(\
+    log_filepath, maxBytes=1048576, backupCount=5)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.addHandler(ch)
 
 #print os.getcwd()
 wsf_service_root = 'http://people.bibkn.org/wsf/ws/'
+dataset_root = 'http://people.bibkn.org/wsf/datasets/'
+
 def get_wsf_service_root ():
     return wsf_service_root
 def set_wsf_service_root (rootpath):
     global wsf_service_root
     wsf_service_root = rootpath
-
-dataset_root = 'http://people.bibkn.org/wsf/datasets/'
 def get_dataset_root ():
     return dataset_root
 def set_dataset_root (rootpath):
@@ -30,8 +50,7 @@ def set_dataset_root (rootpath):
     dataset_root = rootpath
 
 
-def wsf_request (service, params, http_method="post", accept_header="application/json"):
-    deb = 0
+def wsf_request (service, params, http_method="post", accept_header="application/json", deb = 0):
     if (service[-1] != '/'): service += '/' 
     # as of 6/8/10 the service root to call services uses /ws/
     # and the service root when referring to a service is /wsf/ws/
@@ -48,9 +67,9 @@ def wsf_request (service, params, http_method="post", accept_header="application
     else:
         response_format = "other"
 
-# This output is helpful to inculde when reporting bugs
-    if deb: print '\n\nHEADER:\n', header
-    if deb: print '\nREQUEST: \n',s+'?'+p
+# This output is helpful to include when reporting bugs
+    if deb: logger.debug( '\n\nHEADER:\n', header)
+    if deb: logger.debug( '\nREQUEST: \n',s+'?'+p)
     response = None
     #print s+"?"+p
     #print header
@@ -71,13 +90,13 @@ def wsf_request (service, params, http_method="post", accept_header="application
         response = fp.read()
         fp.close()
         
-    if deb: print '\nWSF CALL RESPONSE:\n', response
+    if deb: logger.debug( '\nWSF CALL RESPONSE:\n', response)
     try:
         if (response and (not isinstance(response, dict)) and (response_format == "json")):
             response = simplejson.loads(response)
     except: # this catches url and http errors        
-        print 'BAD JSON:'
-        if (not isinstance(response, dict)): print response.replace('\\n','\n')
+        logger.debug( 'BAD JSON:')
+        if (not isinstance(response, dict)): logger.debug( response.replace('\\n','\n'))
         response = {'error':'simplejsonError','reason':'bad json', "response":response}
     
     #print '\nWSF CALL RESPONSE:\n', response        
@@ -213,8 +232,8 @@ def add_records(registered_ip, ds_id, rdf_str):
 def update_record(registered_ip, ds_id, bibjson):
     rdf_str = convert_json_to_rdf(registered_ip, bibjson)
     if(isinstance(rdf_str,dict) ):
-        print 'ERROR: update_record: BIBJSON TO RDF FAILED'
-        print simplejson.dumps(rdf_str, indent=2)
+        logger.debug('ERROR: update_record: BIBJSON TO RDF FAILED')
+        logger.debug( simplejson.dumps(rdf_str, indent=2))
         response = rdf_str
     else:    
         params = '&registered_ip=' + registered_ip
@@ -350,8 +369,8 @@ def get_dataset_list(ip, other_params=None):
     return ds_list
 
 
-def data_import(ip, ds_id, datasource):
-    
+def data_import(ip, ds_id, datasource, testlimit = None, start=0):
+#How to keep track of what we've imported already?    
     f_hku = codecs.open(datasource,'r', "utf-8")    
     json_str = f_hku.read()
     bibjson = simplejson.loads(json_str)
@@ -363,10 +382,9 @@ def data_import(ip, ds_id, datasource):
     bib_import['dataset']['id'] = get_dataset_root() + urllib.quote_plus(ds_id) + '/'
 
 # SET TO TEST
-    testlimit = None
     count = 0
     status = {'code': 'ok'}
-    for r in bibjson['recordList']:
+    for i in range(start,len(bibjson['recordList'])):
         count += 1
 
 # STOP TEST
@@ -375,7 +393,7 @@ def data_import(ip, ds_id, datasource):
         bib_import['recordList'] = []
         bib_import['recordList'].append(r)
         #print bib_import
-        f_hku = open('/Users/Jim/Desktop/temp.json','w')    
+        f_hku = open(os.path.join(base_path,'temp.json','w')    
         f_hku.write(simplejson.dumps(bib_import, indent=2))
         f_hku.close()
     
@@ -389,7 +407,7 @@ def data_import(ip, ds_id, datasource):
         #rdf = convert_json_to_text_xml(ip, bib_import)
         rdf = convert_json_to_rdf(ip, bib_import)
         #print rdf
-        f_hku = open('/Users/Jim/Desktop/temp.rdf.xml','w')    
+        f_hku = open(os.path.join(base_path,'temp.rdf.xml','w')    
         f_hku.write(str(rdf))
         f_hku.close()       
         
@@ -399,8 +417,10 @@ def data_import(ip, ds_id, datasource):
 def create_and_import (ip, ds_id, datasource, title=None, description=''):
     t = title
     if (not title): t = ds_id
-    
     response = dataset_create(ip, ds_id, t, description)
+    if response:
+        logger.debug( 'Error')
+        logger.debug( 'Dataset probably exists')
     if (not response):
         response = auth_registar_access(ip, ds_id) 
     if (not response):
@@ -490,7 +510,7 @@ def wsf_test():
     response = search('Pitman', ip, None, 25, 0, other_params) 
     
     print simplejson.dumps(response, indent=2)
-    print
+    print '\n'
     
     if (('recordList' in response) and response['recordList']):
         # you can get total results by calling
