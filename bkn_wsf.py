@@ -394,7 +394,7 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
         bib_import['recordList'] = []
         bib_import['recordList'].append(r)
         #print bib_import
-        f_hku = open(os.path.join(base_path,'temp.json','w'))
+        f_hku = open(os.path.join(base_path,'temp.json'),'w')
     
         '''
         xml = convert_json_to_text_xml(ip, bib_import)
@@ -406,7 +406,7 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
         #rdf = convert_json_to_text_xml(ip, bib_import)
         rdf = convert_json_to_rdf(ip, bib_import)
         #print rdf
-        f_hku = open(os.path.join(base_path,'temp.rdf.xml','w'))
+        f_hku = open(os.path.join(base_path,'temp.rdf.xml'),'w')
         f_hku.write(str(rdf))
         f_hku.close()       
         
