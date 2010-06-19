@@ -191,7 +191,7 @@ def dataset_create(registered_ip, ds_id, title, description=None, creator=None):
     response = wsf_request("dataset/create", params, "post") 
     return response
 
-def auth_registar_access(registered_ip, ds_id):
+def auth_registrar_access(registered_ip, ds_id):
     ip = '&registered_ip=' + registered_ip
     ds = '&dataset=' + get_dataset_root() + urllib.quote_plus(ds_id) + '/'
     params = ip + ds
@@ -387,7 +387,8 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
     status = {'code': 'ok'}
     for i in range(start,len(bibjson['recordList'])):
         count += 1
-
+        logger.debug( count)
+        logger.debug( '***************************************')
 # STOP TEST
         if (testlimit and (count > testlimit)) : break      
 
@@ -407,6 +408,7 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
         rdf = convert_json_to_rdf(ip, bib_import)
         #print rdf
         f_hku = open(os.path.join(base_path,'temp.rdf.xml'),'w')
+        logger.debug(str(rdf))
         f_hku.write(str(rdf))
         f_hku.close()       
         
@@ -421,7 +423,7 @@ def create_and_import (ip, ds_id, datasource, title=None, description=''):
         logger.debug( 'Error')
         logger.debug( 'Dataset probably exists')
     if (not response):
-        response = auth_registar_access(ip, ds_id) 
+        response = auth_registrar_access(ip, ds_id) 
     if (not response):
         response = data_import(ip, ds_id, datasource)
     return response
@@ -473,7 +475,7 @@ above the simplejson.dumps() call
     response = dataset_create(ip, ds_id, 'jack test', 'small test of create and import')
 
     # SET PERMISSONS
-    response = auth_registar_access(ip, ds_id) 
+    response = auth_registrar_access(ip, ds_id) 
 
     # ADD RECORDS
     response = add_records(ip, ds_id, rdf)
@@ -524,3 +526,6 @@ def wsf_test():
             print '\t Person - \t just people'
 
 #wsf_test()
+ip = '98.248.147.79'
+#data_import(ip, "OpenLibrary_MathStat","/Users/Jim/Desktop/openlibrary_dedup.json",start=111606)
+#data_import(ip, "Sand","/Users/Jim/Desktop/openlibrary_dedup.json",start=111606)

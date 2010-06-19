@@ -1,7 +1,22 @@
 <?xml version="1.0"?>
-<rdf:RDF  xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:iron="http://purl.org/ontology/iron#" xmlns:ns0="http://people.bibkn.org/wsf/ontology/types/">
+<rdf:RDF  xmlns:owl="http://www.w3.org/2002/07/owl#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:iron="http://purl.org/ontology/iron#" xmlns:ns0="http://people.bibkn.org/wsf/ontology/types/" xmlns:ns1="http://people.bibkn.org/wsf/ontology/properties/">
 
 
-    <ns0:Object rdf:about="http://people.bibkn.org/wsf/datasets/Sand/b9029f13dafea9176b6e32adb15b3c68">
+    <ns0:Object rdf:about="http://people.bibkn.org/wsf/datasets/OpenLibrary_MathStat/3c83cabd0c7a727bd153ab99f7a85417">
+        <ns1:publishers>McGraw Hill</ns1:publishers>
+        <ns1:authors_id>/authors/OL543601A</ns1:authors_id>
+        <ns1:created>/type/datetime,2008-04-01T03:28:50.625462</ns1:created>
+        <ns1:dewey_decimal_class>005.13/3</ns1:dewey_decimal_class>
+        <ns1:notes>/type/text,Includes index.</ns1:notes>
+        <ns1:identifiers>goodreads:['66562']</ns1:identifiers>
+        <ns1:covers>66971</ns1:covers>
+        <ns1:languages>/languages/eng</ns1:languages>
+        <ns1:lccn>96047061</ns1:lccn>
+        <ns1:lc_classifications>QA76.73.S59 S55 1997</ns1:lc_classifications>
+        <ns1:last_modified>/type/datetime,2010-04-15T16:59:21.198665</ns1:last_modified>
+        <ns1:authors>/authors/OL543601A</ns1:authors>
+        <ns1:publish_places>New York</ns1:publish_places>
+        <ns1:subjects>VisualWorks.,Smalltalk (Computer program language)</ns1:subjects>
+        <ns1:isbn_10>0079130364</ns1:isbn_10>
     </ns0:Object>
 </rdf:RDF>
