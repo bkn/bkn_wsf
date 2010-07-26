@@ -1,0 +1,30 @@
+{
+    "dataset": {
+		"type":"dataset",
+		"id": "",
+		"schema": [
+			"identifiers.json",
+			"type_hints.json",
+			"http://downloads.bibsoup.org/datasets/bibjson/bibjson_schema.json",
+			"http://www.bibkn.org/drupal/bibjson/bibjson_schema.json"
+			],				
+		"linkage": ["http://www.bibkn.org/drupal/bibjson/iron_linkage.json"]
+	    },
+    "recordList": [{
+		"type": "Person",
+	    "id":"j2",
+	    "name":"John Jack Alves",
+	    "firstword":"Jack",
+	    "something_else":"tennis"
+    },
+	{
+		"type": "Person",
+	    "id":"f2",
+	    "name":"Giasson",
+	    "firstword":"Fred",
+	    "something_else":"structwsf"
+    }
+	
+	
+	]
+}
