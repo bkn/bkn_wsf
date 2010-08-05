@@ -33,7 +33,7 @@ handler = logging.handlers.RotatingFileHandler(\
     log_filepath, maxBytes=1048576, backupCount=5)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.addHandler(ch)
+#logger.addHandler(ch)
 
 #print os.getcwd()
 wsf_service_root = 'http://people.bibkn.org/wsf/ws/'
@@ -72,8 +72,9 @@ def wsf_request (service, params, http_method="post", accept_header="application
     if deb: logger.debug( '\n\nHEADER:\n', header)
     if deb: logger.debug( '\nREQUEST: \n',s+'?'+p)
     response = None
-    #print s+"?"+p
-    #print header
+    print s+"?"+p
+    logger.debug( s+"?"+p)
+    logger.debug( header)
     
     try:
         if (http_method == "get"):
@@ -385,15 +386,19 @@ def data_import(ip, ds_id, datasource, testlimit = None, start=0):
 # SET TO TEST
     count = 0
     status = {'code': 'ok'}
-    for i in range(start,len(bibjson['recordList'])):
+#    start = 238992
+    for i in range(start,len(bibjson['recordList']),100):
+#        print count
         count += 1
         logger.debug( count)
         logger.debug( '***************************************')
 # STOP TEST
         if (testlimit and (count > testlimit)) : break      
-
+        """
         bib_import['recordList'] = []
-        bib_import['recordList'].append(r)
+        bib_import['recordList'].append(bibjson['recordList'][i])
+        """
+        bib_import['recordList'] = bibjson['recordList'][i:i+100]
         #print bib_import
         f_hku = open(os.path.join(base_path,'temp.json'),'w')
     
@@ -503,11 +508,6 @@ def wsf_test():
     other_params = ''
     ip = "66.92.4.19"  # Jack's Mac
     ds_id = 'jack_import_test13'
-    #response = get_dataset_ids(ip)
-    #response = get_dataset_list(ip)
-    #response = create_and_import(ip, ds_id, 'in.json')
-    #response = read_dataset(ip, 'all') # returns bad json error
-    #response = browse(ip, ds_id, 10, 0, other_params)      
     response = search('Pitman', ip, None, 25, 0, other_params) 
     
     print simplejson.dumps(response, indent=2)
@@ -525,7 +525,6 @@ def wsf_test():
             print '\t Object - \t not sure why this does not represent everything'
             print '\t Person - \t just people'
 
-#wsf_test()
-ip = '98.248.147.79'
-#data_import(ip, "OpenLibrary_MathStat","/Users/Jim/Desktop/openlibrary_dedup.json",start=111606)
-#data_import(ip, "Sand","/Users/Jim/Desktop/openlibrary_dedup.json",start=111606)
+#ip = "98.248.147.26"
+#create_and_import(ip, "mathscinet_mrauth","mrauth_id.bibjson")                               
+#data_import(ip, "more_testing_test2","/Users/Jim/Desktop/Bibkn/mgp_move.json")
