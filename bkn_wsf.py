@@ -75,18 +75,15 @@ import urllib2
 import urlparse
 #from urlparse import parse_qs
 import simplejson
-
 import sys
 import cgi, cgitb 
 cgitb.enable()
-
 #print os.getcwd()
-
-
 
 #Setting up logging
 #StreamHandler writes to stdout
 logger = None
+
 def init_logging ():
     global logger
     base_path = os.path.abspath("")
@@ -108,10 +105,12 @@ def init_logging ():
 
 
 def slash_end (s):
+    #Appends a trailing '/' if a string doesn't have one already
     if (s[-1] != '/'): s += '/'
     return s
 
 def unslash_end (s):    
+    #Removes the trailing '/' if a string has one
     # use rstrip?
     if (s[-1] == '/'): s = s[0:len(s)-2]
     return s
@@ -232,7 +231,7 @@ class Dataset:
                         elif ('error' in record):
                             data['recordList'].append(record)
             return data
-
+        
         if (k == 'detail'):
             response = get_detailed_response(v)
         else:
@@ -637,35 +636,35 @@ def search(query, ds_uris=None, items=10, page=0, other_params=None):
     return data
 
 
-def data_import(ds_id, datasource, testlimit = None, start=0):
+def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1):
 #How to keep track of what we've imported already?    
     f_hku = codecs.open(datasource,'r', "utf-8")    
     json_str = f_hku.read()
     bibjson = simplejson.loads(json_str)
     f_hku.close()
-    
     bib_import = {}
     bib_import['dataset'] = bibjson['dataset']
     bib_import['dataset']['id'] = Dataset.get('uri')
-
 # SET TO TEST
     count = 0
     status = {'code': 'ok'}
-    for i in range(start,len(bibjson['recordList'])):
-        r = bibjson['recordList'][i]
+    for i in range(start,len(bibjson['recordList']), import_interval):
         count += 1
         debug( count)
-# STOP TEST
+# BREAKS HERE IF TESTING
         if (testlimit and (count > testlimit)) : break      
-
-        bib_import['recordList'] = []
-        bib_import['recordList'].append(r)
+        bib_import['recordList'] = bibjson['recordList'][i:i+import_interval]
         rdf = convert_json_to_rdf(bib_import)
-        
         response = Record.add(str(rdf),Dataset.set(ds_id))
+#If there are any records left, import the rest as the last batch
+    if not (testlimit and (count > testlimit)) :  
+        bib_import['recordList'] = bibjson['recordList'][i+import_interval:]
+        if len(bib_import['recordList'])>0:
+            rdf = convert_json_to_rdf(bib_import)
+            response = Record.add(str(rdf),Dataset.set(ds_id))
     return status
 
-def create_and_import (ds_id, datasource, title=None, description=''):
+def create_and_import (ds_id, datasource, title=None, description='', testlimit = None , import_interval = 1):
     response = Dataset.create(Dataset.set(ds_id), title, description)
     if response:
         debug( 'Error')
@@ -673,11 +672,8 @@ def create_and_import (ds_id, datasource, title=None, description=''):
     # Dataset.create calls to set access
     #if (not response): response = Dataset.auth_registrar_access(Dataset.get()) 
     if (not response):
-        response = data_import(Dataset.get(), datasource)
+        response = data_import(Dataset.get(), datasource,testlimit=testlimit, import_interval = import_interval)
     return response
-
-
-
 
 def get_bkn_wsf_param(cgi_fields, key):
     response = None
@@ -765,7 +761,6 @@ def wsf_test():
         response =  Record.read()
         response = Dataset.delete()
         response = Dataset.read()
-    
     #init_logging()
     other_params = ''
     #Dataset.set('jack_update_test')
@@ -799,16 +794,47 @@ def wsf_test():
             print '\t Object - \t not sure why this does not represent everything'
             print '\t Person - \t just people'
 
-#wsf_test()
-#data_import("OpenLibrary_MathStat","/Users/Jim/Desktop/openlibrary_dedup.json",start=111606)
-#data_import("Sand","/Users/Jim/Desktop/openlibrary_dedup.json",start=111606)
 
+
+def jim_test():
+    response = {}
+    BKNWSF.set('http://people.bibkn.org/wsf/','root')
+    Service.set(BKNWSF.get()+'ws/','root')    
+    Dataset.set(BKNWSF.get()+'datasets/','root')
+    ds = Dataset()
+    ds.set('mass_import_test3')
+#    print Record.set('1')
+    response = ds.delete()
+    init_logging()
+    other_params = ''
+    ds_id = Dataset.part['id']
+    response = create_and_import(ds.part['id'], '/Users/Jim/Desktop/Bibkn/hku_idify.json',testlimit=1,import_interval = 2000)    
+    print ds.browse()
+    #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
+    #response = data_import(Dataset.set('jack_test_create'), 'in.json')
+    #response = Record.read(Record.set('1'))  
+    #response = search('Pitman') 
+    #response = search('Pitman', 'all', 10, 0, other_params) 
+    print simplejson.dumps(response, indent=2)
+    print '\n'    
+    """
+    if (('recordList' in response) and response['recordList']):
+        # you can get total results by calling
+        facets = get_result_facets(response)
+        if (facets):
+            print 'facets'
+            print simplejson.dumps(facets, indent=2)
+            print '\nNOTE: not all things are people. See facets[\"type\"]'
+            print 'for  counts: (there are a few things to check)'
+            print '\t owl_Thing - \t should represent everything if it exists'
+            print '\t Object - \t not sure why this does not represent everything'
+            print '\t Person - \t just people'    
+    """
+#wsf_test()
 
 cgi_fields = cgi.FieldStorage()    
-
 callback = None
 if 'callback' in cgi_fields: callback = cgi_fields.getfirst('callback') 
-
 if not callback: 
     if (('service' in cgi_fields) and (cgi_fields.getfirst('service') == 'get_remote_ip')):
         #don't semd end of line for print. We want to return a single line string      
@@ -862,3 +888,4 @@ else:
     #response = browse(ds_id, 10, 0, '')      
     print 'Content-type: text/plain \n\n'
     print callback+'('+simplejson.dumps(response)+')'
+ 
