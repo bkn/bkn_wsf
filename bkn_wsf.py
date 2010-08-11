@@ -9,61 +9,36 @@
 # For more information see,
 #     http://openstructs.org/structwsf
 '''
-changes
-8/10/2010 
-MAJOR REFACTORING OF FUNCTIONS INTO CLASSES AND METHODS.
-General changes
-- bkn_wsf.py can now be used as a web service. Not all structwsf calls are supported yet.
-- BKNWSF gets the user's ip address, 
-- set register_ip parameter in wsf_request for all services, and removed all use of ip address in methods. 
-- added autotest
-wsf_request
-- get the ip and use it for all calls, 
-Record.read
-- removed include_linksback and include_reification
-Dataset.create
-- added call to set auth
-- use ds_id if no title
-Record.add
-- modified to accept a simple json record when using Dataset.template()
-- not backward compatible because parameters are swapped so ds_id can be optional
+Repository: http://github.com/tigerlight/bkn_wsf
 
-Dataset 
-YOU MUST EXPLICITLY INITIALIZE THE WSF_SERVICE and DATASET ROOT
-THE DATASET URI CAN BE ANYTHING. BY CONVENTION WE APPEND /datasets/ 
-TO THE /wsf/ ROOT. THEN APPEND A NAME FOR EACH DATASET.
-- new object to store info about a dataset
-- replaces get_ / set_ dataset() functions
-- created to allow using service for multiple structwsf instance 
-- Dataset.set('http://people.bibkn.org/wsf/datasets/', 'root')
+TODO: see http://github.com/tigerlight/bkn_wsf/issues
 
-Record
-- new object to store info about a record
-
-'''
-
+EXAMPLES: 
+See autotest function near bottom of this file.
+To access private repositories:
     
-'''
-EXAMPLES
-
-To try an example copy and paste one of the 'response=' lines to the end of the
-above the simplejson.dumps() call
-
     REGISTER FOR AN ACCOUNT: http://people.bibkn.org/drupal/user/register
     LOGIN:                   http://people.bibkn.org/user
-    REGISTER AN EXTERNAL IP: http://people.bibkn.org/drupal/admin/settings/conStruct/access/
-    ----------------------------------------------------    
-    response = browse(ds_id, 10, 0, other_params)     
-    response = search('Pitman', None, 10, 0, other_params) 
-    response = Record.read(record_id, ds_id)
-    response = create_and_import(ds_id, bibjson_file)
-    response = Dataset.create(ds_id, 'jack test', 'small test of create and import')    
-    response = Dataset.auth_registrar_access(ds_id) # SET PERMISSONS
+
+    Then 'JOIN' the dataset: http://people.bibkn.org/og/
+
+
+Changes since last check-in:
+8/11/2010
+Record.delete()
+wsf_request
+- strip param whitespace
+    s = str(Service.get('root') + service).strip()
+    p = str(params + BKNWSF.ip('param')).strip()
+
+get.ip('param')
+- strip whitespace
+
+services
+- add services for Record add, update, and delete
+
+
 '''
-        
-
-
-
 
 import re, os, logging
 from logging import handlers
@@ -126,7 +101,7 @@ class BKNWSF:
         # This means we are executing locally
         # We need to get the external ip address for the local machine
         bkn_wsf = 'http://services.bibsoup.org/cgi-bin/structwsf/bkn_wsf.py'
-        part['ip'] = str(urllib2.urlopen(bkn_wsf,'&service=get_remote_ip').read())
+        part['ip'] = str(urllib2.urlopen(bkn_wsf,'&service=get_remote_ip').read()).strip()
         #urllib.urlopen('http://www.whatismyip.com/automation/n09230945.asp').read()
 
             
@@ -248,7 +223,6 @@ class Dataset:
         n = '&items='+str(items)
         offset = '&page='+str(page)
         params = ds + n + offset + '&include_aggregates=True'
-        if (other_params): params += other_params
         response = wsf_request("browse", params, 'post', 'text/xml')
         data = Dataset.get('detail',response)
         return data    
@@ -271,7 +245,7 @@ class Dataset:
         params = '&uri=' + urllib.quote_plus(Dataset.set(ds_id))
         response = wsf_request("dataset/delete", params, "get") 
         return response
-    
+        
     @staticmethod
     def create(ds_id=None, title=None, description=None, creator=None):
         ds = '&uri=' + urllib.quote_plus(Dataset.set(ds_id))
@@ -467,6 +441,26 @@ class Record:
         return response
 
 
+    @staticmethod
+    def delete (record_id, ds_id):
+        '''
+        No default parameters because we don't want inadvertent delete of the current record.
+        Parameters can be ids or uris. They are converted to uris
+        '''
+        record_uri = Record.set(record_id)
+        dataset_uri = Dataset.set(ds_id)
+        if (record_uri and dataset_uri):
+            params = ''
+            params += '&uri=' + record_id
+            params += '&dataset=' + ds_id
+            response = wsf_request('crud/delete', params, 'get', 'bibjson')
+        else:
+            response = {error: 'No parameters specified for Record.delete()'}
+
+        return response
+        
+
+
 '''
 TO SEE HTTP REQUEST/RESPONSE set 
 deb = 1 in the wsf_request function
@@ -484,10 +478,10 @@ def wsf_request (service, params, http_method="post", accept_header="application
     # as of 6/8/10 the service root to call services uses /ws/
     # and the service root when referring to a service is /wsf/ws/
     #s = 'http://people.bibkn.org/ws/'+ service
-    s = Service.get('root') + service
-    p = params + BKNWSF.ip('param')
+    s = str(Service.get('root') + service).strip()
+    p = str(params + BKNWSF.ip('param')).strip()
     response_format = "json"
-    header = {"Accept": accept_header}
+    header = {"Accept": accept_header.strip()}
     if ((accept_header == 'bibjson') or (accept_header == 'application/iron+json')):
         header['Accept'] = "application/iron+json"
     elif (accept_header == "json"):
@@ -620,8 +614,6 @@ def extract_dataset_id_from_browse_response(r):
 
 def search(query, ds_uris=None, items=10, page=0, other_params=None):
     if not ds_uris: ds_uris = Dataset.get('uri')
-    print 'search call get'+Dataset.get()
-    print 'search dsuris:'+ds_uris
     # other params: &types= &attributes= &inference= &include_aggregates=
     params = '&query='+query + '&include_aggregates=true'
     # ds_uris can accept multiple uris so we don't want to update the Dataset object
@@ -832,9 +824,13 @@ def jim_test():
     """
 #wsf_test()
 
+
+
 cgi_fields = cgi.FieldStorage()    
+
 callback = None
 if 'callback' in cgi_fields: callback = cgi_fields.getfirst('callback') 
+
 if not callback: 
     if (('service' in cgi_fields) and (cgi_fields.getfirst('service') == 'get_remote_ip')):
         #don't semd end of line for print. We want to return a single line string      
@@ -857,35 +853,48 @@ else:
     if (bibjson):
         bibjson = simplejson.loads(bibjson)
     
-    ds = Dataset()
-    r = Record()
+    Dataset.set(dataset_uri)
+    Record.set(record_uri)
     if (dataset_uri): 
         ds.set(dataset_uri)
     if (record_uri): 
         r.set(record_uri)
 
-        
+    error = True
     if service == 'test':
-        ds.set('jack_update_test')             
+        ds.set('jack_update_test')
+        error = False             
     elif service == 'browse':
         '''
         ADD FORMATTED FACETS TO RETURN
         ''' 
         response = ds.browse()
-    elif service == 'read_record':
+        error = False             
+    elif service == 'record_read':
         response = r.read(r.set(record_uri))
-    elif service == 'update_record':   
-        
-        #response = {'ds':ds.get(), 'r': r.get(), 'doc':bibjson}
+        error = False             
+    elif service == 'record_update':   
         response = r.update(bibjson)
-        if (response): # should be None if update succeeded
-            response['params'] = cgi_fields.getfirst('params')
-        else:
+        if (not response): 
+            error = False
             response = r.read(r.set(record_uri))
+    elif service == 'record_add':   
+        # This can be used to add or update a single attribute
+        response = r.add(bibjson)
+        if (not response): 
+            error = False
+            response = r.read(r.set(record_uri))
+    elif service == 'record_delete':   
+        response = Record.delete(Record.set(record_uri), Dataset.set(dataset_uri))
+        if (not response): 
+            error = False
+            response = Record.read()
         
     #response = simplejson.dumps(bigd)#.replace('\n','<br>').replace('  ','&nbsp;&nbsp;')
     #if 'jsonp' in cgi_fields: callback  = cgi_fields.getfirst('jsonp') 
     #response = browse(ds_id, 10, 0, '')      
+    if error:
+        response['params'] = cgi_fields.getfirst('params')
+
     print 'Content-type: text/plain \n\n'
     print callback+'('+simplejson.dumps(response)+')'
- 
