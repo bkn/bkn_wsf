@@ -55,28 +55,38 @@ import cgi, cgitb
 cgitb.enable()
 #print os.getcwd()
 
-#Setting up logging
-#StreamHandler writes to stdout
-logger = None
 
-def init_logging ():
-    global logger
-    base_path = os.path.abspath("")
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s - %(name)s\
-     - %(levelname)s - %(message)s")
-    # add formatter to ch
-    ch.setFormatter(formatter)
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    #handler writes to file
-    log_filepath = os.path.join(base_path, "log.txt")
-    handler = logging.handlers.RotatingFileHandler(\
-        log_filepath, maxBytes=1048576, backupCount=5)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.addHandler(ch)
+class Logger():
+    def __init__(self):
+#Setting up logging
+        self.formatter = logging.Formatter("%(asctime)s - %(name)s\
+         - %(levelname)s - %(message)s")
+        self.log = logging.getLogger()
+        self.log.setLevel(logging.DEBUG)
+        self.setFileHandler()
+        #disable next line to silence stdout
+        self.setStreamHandler()
+    def debug(self, message):
+         self.log.debug(message)
+    def setFileHandler(self, filename = 'log.txt'):
+        base_path = os.path.abspath("")
+        log_filepath = os.path.join(base_path, "log.txt")
+        #handler writes to 5 files, creating a new one
+        #when one gets too large, of the form
+        #log.txt, log.txt1, log.txt2...
+        handler = logging.handlers.RotatingFileHandler(\
+            log_filepath, maxBytes=1048576, backupCount=5)
+        handler.setFormatter(self.formatter)
+        self.log.addHandler(handler)
+#StreamHandler writes to stdout
+    def setStreamHandler(self):
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.DEBUG)
+        ch.setFormatter(self.formatter)
+        self.log.addHandler(ch)
+
+global logger
+logger = Logger()
 
 
 def slash_end (s):
@@ -366,7 +376,7 @@ class Record:
         return response
     
     @staticmethod
-    def update(record, ds_id=None):
+    def update(record, ds_id=None, debug = False):
         '''
             SHOULD SET Record.set() id, need to test for recordList or 'id'
         '''
@@ -389,7 +399,7 @@ class Record:
             rdf = record
         
         if (not rdf):
-            rdf = convert_json_to_rdf(bibjson)   
+            rdf = convert_json_to_rdf(bibjson, debug)   
 
         if(isinstance(rdf,dict) ):
             response = rdf
@@ -397,7 +407,10 @@ class Record:
             params = '&dataset=' + Dataset.set(ds_id)
             params += "&mime="+urllib.quote_plus("application/rdf+xml")
             params += "&document="+rdf
-            response = wsf_request("crud/update", params,"post",'*/*')
+            if not debug:
+                response = wsf_request("crud/update", params,"post",'*/*')
+            else:
+                response = wsf_request_curl("crud/update", params,"post",'*/*')
         return response
     
     '''
@@ -527,6 +540,70 @@ def wsf_request (service, params, http_method="post", accept_header="application
     #print '\nWSF CALL RESPONSE:\n', response        
     return response
 
+def wsf_request_curl (service, params, http_method="post", accept_header="application/json", deb = 0):
+    deb = 0
+    if (service[-1] != '/'): service += '/' 
+    # as of 6/8/10 the service root to call services uses /ws/
+    # and the service root when referring to a service is /wsf/ws/
+    #s = 'http://people.bibkn.org/ws/'+ service
+    s = Service.get('root') + service
+    p = params + BKNWSF.ip('param')
+    response_format = "json"
+    header = {"Accept": accept_header}
+    if ((accept_header == 'bibjson') or (accept_header == 'application/iron+json')):
+        header['Accept'] = "application/iron+json"
+    elif (accept_header == "json"):
+        header['Accept'] = "application/json"    
+    else:
+        response_format = "other"
+# This output is helpful to include when reporting bugs
+    if deb: debug( '\n\nHEADER:\n'+str(header))
+    if deb: debug( '\nREQUEST: \n'+s+'?'+p)
+    response = None
+    #print s+"?"+p
+    #print header
+    
+    headerstring = ""
+    for key in header:
+        headerstring+='-H "%s : %s" ' %(key, header[key])
+
+    try:
+        if (http_method == "get"):
+            print os.system('curl '+headerstring+'"%s" "%s"' %(s+"?"+p))
+            req = urllib2.Request(s+"?"+p, headers = header)        
+        else: # use post
+            writing = open("params.txt","w")
+            writing.write(p)
+            writing.close()
+            command = 'curl '+headerstring+'-d @%s "%s"' %('params.txt', s)
+            print command
+            print os.system(command)
+            req = urllib2.Request(s, headers = header, data = p)        
+        fp = urllib2.urlopen(req)        
+        '''
+        TODO: check fp.code status
+        '''
+    except urllib2.HTTPError, err: 
+        response = {'error':'HTTPError','reason':err.code, 'urllib2':str(err)}
+    except urllib2.URLError, err: 
+        response = {'error':'URLError','reason':err.reason}
+    except:
+        response = {'error':'unknown','reason':None}
+    else:
+        response = fp.read()
+        fp.close()
+        
+    if deb: debug( '\nWSF CALL RESPONSE:\n'+ str(response))
+    try:
+        if (response and (not isinstance(response, dict)) and (response_format == "json")):
+            response = simplejson.loads(response)
+    except: # this catches url and http errors        
+        if deb: debug( 'BAD JSON:')
+        if (not isinstance(response, dict)): debug( response.replace('\\n','\n'))
+        response = {'error':'simplejsonError','reason':'bad json', "response":response}
+    
+    #print '\nWSF CALL RESPONSE:\n', response        
+    return response
 def convert_bibtex_to_text_xml(data):
     mime = "&docmime="+urllib.quote_plus("application/x-bibtex")
     doc = "&document="+urllib.quote_plus(data)
@@ -550,11 +627,14 @@ def convert_json_to_text_xml(data):
     response = wsf_request("converter/irjson/", params, "post","text/xml")
     return response     
 
-def convert_json_to_rdf(data):
+def convert_json_to_rdf(data, debug = False):
     mime = "&docmime="+urllib.quote_plus("application/iron+json")
     doc = "&document="+urllib.quote_plus(simplejson.dumps(data))
     params = mime + doc
-    response = wsf_request("converter/irjson/", params, "post","application/rdf+xml")
+    if not debug:
+        response = wsf_request("converter/irjson/", params, "post","application/rdf+xml")
+    else:
+        response = wsf_request_curl("converter/irjson/", params, "post","application/rdf+xml")
     return response
 
 
@@ -628,7 +708,7 @@ def search(query, ds_uris=None, items=10, page=0, other_params=None):
     return data
 
 
-def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1):
+def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1, debug = False):
 #How to keep track of what we've imported already?    
     f_hku = codecs.open(datasource,'r', "utf-8")    
     json_str = f_hku.read()
@@ -646,25 +726,24 @@ def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1)
 # BREAKS HERE IF TESTING
         if (testlimit and (count > testlimit)) : break      
         bib_import['recordList'] = bibjson['recordList'][i:i+import_interval]
-        rdf = convert_json_to_rdf(bib_import)
-        response = Record.add(str(rdf),Dataset.set(ds_id))
+        rdf = convert_json_to_rdf(bib_import, debug)
+        response = Record.add(str(rdf),Dataset.set(ds_id), debug)
 #If there are any records left, import the rest as the last batch
     if not (testlimit and (count > testlimit)) :  
         bib_import['recordList'] = bibjson['recordList'][i+import_interval:]
         if len(bib_import['recordList'])>0:
-            rdf = convert_json_to_rdf(bib_import)
-            response = Record.add(str(rdf),Dataset.set(ds_id))
+            rdf = convert_json_to_rdf(bib_import, debug)
+            response = Record.add(str(rdf),Dataset.set(ds_id), debug)
     return status
 
-def create_and_import (ds_id, datasource, title=None, description='', testlimit = None , import_interval = 1):
+def create_and_import (ds_id, datasource, title=None, description='', testlimit = None , import_interval = 1, debug = False):
     response = Dataset.create(Dataset.set(ds_id), title, description)
     if response:
-        debug( 'Error')
-        debug( 'Dataset probably exists')
+        debug( 'Error, Dataset probably exists')
     # Dataset.create calls to set access
     #if (not response): response = Dataset.auth_registrar_access(Dataset.get()) 
     if (not response):
-        response = data_import(Dataset.get(), datasource,testlimit=testlimit, import_interval = import_interval)
+        response = data_import(Dataset.get(), datasource,testlimit=testlimit, import_interval = import_interval, debug = debug)
     return response
 
 def get_bkn_wsf_param(cgi_fields, key):
@@ -823,6 +902,7 @@ def jim_test():
             print '\t Person - \t just people'    
     """
 #wsf_test()
+#jim_test
 
 
 
