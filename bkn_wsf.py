@@ -36,8 +36,6 @@ get.ip('param')
 
 services
 - add services for Record add, update, and delete
-
-
 '''
 
 import re, os, logging
@@ -54,7 +52,6 @@ import sys
 import cgi, cgitb 
 cgitb.enable()
 #print os.getcwd()
-
 
 class Logger():
     def __init__(self):
@@ -88,7 +85,6 @@ class Logger():
 global logger
 logger = Logger()
 
-
 def slash_end (s):
     #Appends a trailing '/' if a string doesn't have one already
     if (s[-1] != '/'): s += '/'
@@ -99,7 +95,6 @@ def unslash_end (s):
     # use rstrip?
     if (s[-1] == '/'): s = s[0:len(s)-2]
     return s
-
 
 class BKNWSF:
     part = {
@@ -226,6 +221,7 @@ class Dataset:
 
     @staticmethod
     def browse(ds_id=None, items=10, page=0, other_params=None):
+        #Lists a count of attribute appearance and lists 10 sample records
         # This is kind of an export.
         # other params: attributes= &types= &inference=
         params = other_params
@@ -271,6 +267,7 @@ class Dataset:
     
     @staticmethod
     def auth_registrar_access(ds_id=None, action='create'):
+        #Sets the right permissions
         ds = '&dataset=' + Dataset.set(ds_id)
         params = ds
         params += '&ws_uris='
@@ -418,7 +415,7 @@ class Record:
     all existing data will remain the same.
     '''
     @staticmethod
-    def add (record, ds_id=None):
+    def add (record, ds_id=None, debug = False):
         '''
             SHOULD SET Record.set() id, need to test for recordList or 'id'        
         '''
@@ -441,7 +438,7 @@ class Record:
             rdf = record
         
         if (not rdf):
-            rdf = convert_json_to_rdf(bibjson)   
+            rdf = convert_json_to_rdf(bibjson, debug)   
 
         if(isinstance(rdf,dict) ):
             response = rdf
@@ -450,7 +447,10 @@ class Record:
             mime = "&mime="+urllib.quote_plus("application/rdf+xml")
             doc = "&document="+urllib.quote_plus(str(rdf))
             params = ds + mime + doc
-            response = wsf_request("crud/create", params,"post",'*/*')    
+            if not debug:
+                response = wsf_request("crud/create", params,"post",'*/*')    
+            else:
+                response = wsf_request_curl("crud/create", params,"post",'*/*')    
         return response
 
 
@@ -482,12 +482,10 @@ deb = 1 in the wsf_request function
 '''
 debug should be replaces by optional logging
 '''
-def debug (str): 
-    print str
 
 def wsf_request (service, params, http_method="post", accept_header="application/json", deb = 0):
-    deb = 0
     if (service[-1] != '/'): service += '/' 
+    #This is the main method that passes calls to structwsf
     # as of 6/8/10 the service root to call services uses /ws/
     # and the service root when referring to a service is /wsf/ws/
     #s = 'http://people.bibkn.org/ws/'+ service
@@ -503,8 +501,8 @@ def wsf_request (service, params, http_method="post", accept_header="application
         response_format = "other"
 
 # This output is helpful to include when reporting bugs
-    if deb: debug( '\n\nHEADER:\n'+str(header))
-    if deb: debug( '\nREQUEST: \n'+s+'?'+p)
+    if deb: logger.debug( '\n\nHEADER:\n'+str(header))
+    if deb: logger.debug( '\nREQUEST: \n'+s+'?'+p)
     response = None
     #print s+"?"+p
     #print header
@@ -528,13 +526,13 @@ def wsf_request (service, params, http_method="post", accept_header="application
         response = fp.read()
         fp.close()
         
-    if deb: debug( '\nWSF CALL RESPONSE:\n'+ str(response))
+    if deb: logger.debug( '\nWSF CALL RESPONSE:\n'+ str(response))
     try:
         if (response and (not isinstance(response, dict)) and (response_format == "json")):
             response = simplejson.loads(response)
     except: # this catches url and http errors        
-        if deb: debug( 'BAD JSON:')
-        if (not isinstance(response, dict)): debug( response.replace('\\n','\n'))
+        if deb: logger.debug( 'BAD JSON:')
+        if (not isinstance(response, dict)): logger.debug( response.replace('\\n','\n'))
         response = {'error':'simplejsonError','reason':'bad json', "response":response}
     
     #print '\nWSF CALL RESPONSE:\n', response        
@@ -557,8 +555,8 @@ def wsf_request_curl (service, params, http_method="post", accept_header="applic
     else:
         response_format = "other"
 # This output is helpful to include when reporting bugs
-    if deb: debug( '\n\nHEADER:\n'+str(header))
-    if deb: debug( '\nREQUEST: \n'+s+'?'+p)
+    if deb: logger.debug( '\n\nHEADER:\n'+str(header))
+    if deb: logger.debug( '\nREQUEST: \n'+s+'?'+p)
     response = None
     #print s+"?"+p
     #print header
@@ -569,15 +567,17 @@ def wsf_request_curl (service, params, http_method="post", accept_header="applic
 
     try:
         if (http_method == "get"):
-            print os.system('curl '+headerstring+'"%s" "%s"' %(s+"?"+p))
+            command = 'curl '+headerstring+'"%s" "%s"' %(s+"?"+p)
+            logger.debug(command)
+            logger.debug( os.system(command))
             req = urllib2.Request(s+"?"+p, headers = header)        
         else: # use post
             writing = open("params.txt","w")
             writing.write(p)
             writing.close()
             command = 'curl '+headerstring+'-d @%s "%s"' %('params.txt', s)
-            print command
-            print os.system(command)
+            logger.debug( command)
+            logger.debug( os.system(command))
             req = urllib2.Request(s, headers = header, data = p)        
         fp = urllib2.urlopen(req)        
         '''
@@ -593,13 +593,13 @@ def wsf_request_curl (service, params, http_method="post", accept_header="applic
         response = fp.read()
         fp.close()
         
-    if deb: debug( '\nWSF CALL RESPONSE:\n'+ str(response))
+    if deb: logger.debug( '\nWSF CALL RESPONSE:\n'+ str(response))
     try:
         if (response and (not isinstance(response, dict)) and (response_format == "json")):
             response = simplejson.loads(response)
     except: # this catches url and http errors        
-        if deb: debug( 'BAD JSON:')
-        if (not isinstance(response, dict)): debug( response.replace('\\n','\n'))
+        if deb: logger.debug( 'BAD JSON:')
+        if (not isinstance(response, dict)): logger.debug( response.replace('\\n','\n'))
         response = {'error':'simplejsonError','reason':'bad json', "response":response}
     
     #print '\nWSF CALL RESPONSE:\n', response        
@@ -722,7 +722,7 @@ def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1,
     status = {'code': 'ok'}
     for i in range(start,len(bibjson['recordList']), import_interval):
         count += 1
-        debug( count)
+        logger.debug( count)
 # BREAKS HERE IF TESTING
         if (testlimit and (count > testlimit)) : break      
         bib_import['recordList'] = bibjson['recordList'][i:i+import_interval]
@@ -739,7 +739,7 @@ def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1,
 def create_and_import (ds_id, datasource, title=None, description='', testlimit = None , import_interval = 1, debug = False):
     response = Dataset.create(Dataset.set(ds_id), title, description)
     if response:
-        debug( 'Error, Dataset probably exists')
+        logger.debug( 'Error, Dataset probably exists')
     # Dataset.create calls to set access
     #if (not response): response = Dataset.auth_registrar_access(Dataset.get()) 
     if (not response):
@@ -873,13 +873,12 @@ def jim_test():
     Service.set(BKNWSF.get()+'ws/','root')    
     Dataset.set(BKNWSF.get()+'datasets/','root')
     ds = Dataset()
-    ds.set('mass_import_test3')
+    ds.set('mass_import_test4')
 #    print Record.set('1')
     response = ds.delete()
-    init_logging()
     other_params = ''
     ds_id = Dataset.part['id']
-    response = create_and_import(ds.part['id'], '/Users/Jim/Desktop/Bibkn/hku_idify.json',testlimit=1,import_interval = 2000)    
+    response = create_and_import(ds.part['id'], 'acm.json',testlimit=1,import_interval = 2000)    
     print ds.browse()
     #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
     #response = data_import(Dataset.set('jack_test_create'), 'in.json')
@@ -902,7 +901,7 @@ def jim_test():
             print '\t Person - \t just people'    
     """
 #wsf_test()
-#jim_test
+jim_test()
 
 
 
