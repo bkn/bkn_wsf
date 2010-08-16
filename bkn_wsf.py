@@ -727,6 +727,9 @@ def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1,
         if (testlimit and (count > testlimit)) : break      
         bib_import['recordList'] = bibjson['recordList'][i:i+import_interval]
         rdf = convert_json_to_rdf(bib_import, debug)
+        rdf_file = open("temp.rdf.xml","w")
+        rdf_file.write(str(rdf))
+        rdf_file.close()
         response = Record.add(str(rdf),Dataset.set(ds_id), debug)
 #If there are any records left, import the rest as the last batch
     if not (testlimit and (count > testlimit)) :  
@@ -872,19 +875,16 @@ def jim_test():
     BKNWSF.set('http://people.bibkn.org/wsf/','root')
     Service.set(BKNWSF.get()+'ws/','root')    
     Dataset.set(BKNWSF.get()+'datasets/','root')
+    #Create a dataset object
     ds = Dataset()
-    ds.set('mass_import_test4')
-#    print Record.set('1')
+    #set denotes which dataset id you want to work with
+    ds.set('mass_import_test5')
+    #deletes what's already there in order to start afresh
     response = ds.delete()
     other_params = ''
     ds_id = Dataset.part['id']
-    response = create_and_import(ds.part['id'], 'acm.json',testlimit=1,import_interval = 2000)    
+    response = create_and_import(ds.part['id'], 'ACM.json',testlimit=1,import_interval = 2000, debug=True)        
     print ds.browse()
-    #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
-    #response = data_import(Dataset.set('jack_test_create'), 'in.json')
-    #response = Record.read(Record.set('1'))  
-    #response = search('Pitman') 
-    #response = search('Pitman', 'all', 10, 0, other_params) 
     print simplejson.dumps(response, indent=2)
     print '\n'    
     """
@@ -977,3 +977,6 @@ else:
 
     print 'Content-type: text/plain \n\n'
     print callback+'('+simplejson.dumps(response)+')'
+
+
+
