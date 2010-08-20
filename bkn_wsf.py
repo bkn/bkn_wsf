@@ -25,23 +25,36 @@ To access private repositories:
 
 Changes since last check-in:
 8/11/2010
-Record.delete()
+
 wsf_request
 - strip param whitespace
     s = str(Service.get('root') + service).strip()
     p = str(params + BKNWSF.ip('param')).strip()
 
-get.ip('param')
+BKNWSF.ip('param')
 - strip whitespace
 
-services
-- add services for Record add, update, and delete
+Record.delete()
+- first implementation
+
+BKNWSF.browse()
+- moved from Datset to BKNWSF
+- default is the same
+- supports sending a list of datasets
+- does not set the dataset because there may be multiple
+
+BKNWSF.search
+- moved to BKNWSF
+- defaults to current dataset
+- requires 'all' to search all datasests
+
 '''
 
 import re, os, logging
 from logging import handlers
 from os import getenv,path
 from datetime import *
+import time
 import codecs
 import urllib
 import urllib2
@@ -50,8 +63,9 @@ import urlparse
 import simplejson
 import sys
 import cgi, cgitb 
-cgitb.enable()
+
 #print os.getcwd()
+
 
 class Logger():
     def __init__(self):
@@ -85,6 +99,12 @@ class Logger():
 global logger
 logger = Logger()
 
+
+
+def microtime_id(): 
+    d = datetime.utcnow()
+    return d.strftime('%Y%m%d%H%M%S')+str(d).split('.')[1]
+
 def slash_end (s):
     #Appends a trailing '/' if a string doesn't have one already
     if (s[-1] != '/'): s += '/'
@@ -92,13 +112,12 @@ def slash_end (s):
 
 def unslash_end (s):    
     #Removes the trailing '/' if a string has one
-    # use rstrip?
-    if (s[-1] == '/'): s = s[0:len(s)-2]
-    return s
+    return s.rstrip('/')
+
 
 class BKNWSF:
     part = {
-        'root': None,
+        'root': '',
         'ip': os.getenv("REMOTE_ADDR")
             }
 
@@ -116,10 +135,13 @@ class BKNWSF:
             BKNWSF.part[k] = slash_end(value)
         return BKNWSF.get()
     @staticmethod
-    def get():
-        return BKNWSF.part['root']
+    def get(k='root'):
+        response = ''
+        if (k == 'root'):
+            response = BKNWSF.part['root'] 
+        return response
     @staticmethod
-    def ip(format=None):
+    def ip(format=''):
         if (format == 'param'):
             response = ''
             if (BKNWSF.part['ip']):
@@ -128,10 +150,46 @@ class BKNWSF:
             response = BKNWSF.part['ip']
         return response
 
+    @staticmethod
+    def search(query, ds_uris='', items=10, page=0, other_params='&include_aggregates=true'):
+        if not ds_uris: ds_uris = Dataset.get('uri')
+        params = '&query=' + query
+        # ds_uris can accept multiple uris so we don't want to update the Dataset object
+        # Default to curremt datast if none is passed
+        # This means 'all' needs to be explicitly passed to search all datasets
+        params += '&datasets=' + ds_uris
+        if (items): params += '&items='+str(items)
+        if (page):  params += '&page='+str(page)
+        # other params: &types= &attributes= &inference= &include_aggregates=
+        params += other_params
+        response = wsf_request('search', params, 'post', 'text/xml')
+        data = Dataset.get('detail',response)
+        return data
+
+    @staticmethod
+    def browse(ds_uris='', items='10', page='0', other_params='&include_aggregates=True'):
+        # This is kind of an export.
+        params = ''
+        # ds_uris can accept multiple uris so we don't want to update the Dataset object
+        # Default to curremt datast if none is passed
+        # This means 'all' needs to be explicitly passed to search all datasets
+        if (not ds_uris): 
+            ds_uris = Dataset.get('uri')
+        params += '&datasets=' + ds_uris
+        if (items): params += '&items='+str(items)
+        if (page):  params += '&page='+str(page)
+        # other params: attributes= &types= &inference=
+        params += other_params
+        response = wsf_request("browse", params, 'post', 'text/xml')
+        data = Dataset.get('detail',response)
+        return data    
+
+
+
 
 class Service:
     part = {
-        'root': None
+        'root': ''
             }
     @staticmethod
     def set (value, k):
@@ -146,11 +204,11 @@ class Service:
 class Dataset:
     '''
     CHECK FOR VALID PATHS - NO SPACES OR WEIRD CHARS
-    '''
+    '''    
     part = {
-        'root': None,
-        'uri': None,
-        'id': None,
+        'root': '',
+        'uri': '',
+        'id': '',
         'template': {
             #"type":"dataset",
             "id": "",
@@ -164,28 +222,44 @@ class Dataset:
             }
         }
     @staticmethod
-    def set (value, k=None):
-        # A None value may be passed when methods are called without a ds_id
-        # Allow call with value = None but don't do anything
+    def make_root(uri):
+        # guess that the root is the string after the last non-trailing slash
+        root_end = Dataset.part['uri'].rfind('/',0,-1) + 1
+        Dataset.part['root'] = slash_end(Dataset.part['uri'][0:root_end])
+        return Dataset.part['root']         
+        
+    @staticmethod
+    def set (value, k=''):
+        '''
+        NOTE: When setting uri or id, the root will not be updated unless it is None
+        '''
+        # Allow call with value = None, return current uri but don't do anything else
+        # 
         if (value and (not k)) : # value is either a uri or id
-            if (value[0:7] == 'http://'): # value is a uri
-                Dataset.part['uri'] =  slash_end(value)
-                root_end = Dataset.part['uri'].rfind('/',0,-1) + 1
-                Dataset.part['id'] = Dataset.part['uri'][root_end:-1] # withoutslash
-                Dataset.part['root'] = Dataset.part['uri'][0:root_end] # with slash
+            if ((value[0:2] == '@@') or (value[0:7] == 'http://')): # value is a uri
+                Dataset.set(value, 'uri')
             else: # value is an id
-                Dataset.part['id'] = unslash_end(value)
-                Dataset.part['uri'] =  slash_end(Dataset.part['root'] + Dataset.part['id'])
+                Dataset.set(value,'id')            
         elif (value and (k in Dataset.part)):
             if(k == 'id'):
-                Dataset.part[k] = unslash_end(value)
-            else:
-                Dataset.part[k] = slash_end(value)
+                if (not Dataset.part['root']):
+                    Dataset.make_root(Dataset.part['uri'])
+                Dataset.part['id'] =  unslash_end(value.replace('@','',2))
+                Dataset.part['uri'] =  slash_end(Dataset.part['root'] + Dataset.part['id'])                
+                #Dataset.part['uri'] = Dataset.part['id']
+            elif (k == 'uri'):
+                Dataset.part['uri'] =  slash_end(value.replace('@','',2))
+                #Dataset.part['id'] = Dataset.part['uri']
+                if (not Dataset.part['root']):
+                    Dataset.make_root(Dataset.part['uri'])
+                Dataset.part['id'] = unslash_end(Dataset.part['uri'].replace(Dataset.part['root'],''))
+            elif (k == 'root'):
+                Dataset.part['root'] = slash_end(value)
 
         return Dataset.get()            
     
     @staticmethod
-    def get(k='uri', v=None):
+    def get(k='uri', v=''):
         def get_detailed_response(response):
             if (not isinstance(response, dict)): # only an error would return dict    
                 response = convert_text_xml_to_json(response)   
@@ -204,7 +278,7 @@ class Dataset:
                             data['aggregate'] = []
                         data['aggregate'].append(r)
                     elif (('id' in r) ):
-                        Dataset.set(extract_dataset_id_from_browse_response(r))
+                        Dataset.set(extract_dataset_uri_from_browse_response(r), 'uri')
                         record = Record.read(r['id'])
                         if ('recordList' in record):
                             data['recordList'].extend(record['recordList'])
@@ -220,26 +294,17 @@ class Dataset:
 
 
     @staticmethod
-    def browse(ds_id=None, items=10, page=0, other_params=None):
-        #Lists a count of attribute appearance and lists 10 sample records
-        # This is kind of an export.
-        # other params: attributes= &types= &inference=
-        params = other_params
-        ds = '&datasets=' + Dataset.set(ds_id)
-        n = '&items='+str(items)
-        offset = '&page='+str(page)
-        params = ds + n + offset + '&include_aggregates=True'
-        response = wsf_request("browse", params, 'post', 'text/xml')
-        data = Dataset.get('detail',response)
-        return data    
-
-    @staticmethod
-    def read(ds_uri=None, other_params=None):
-        params = '&uri=' + Dataset.set(ds_uri)
+    def read(ds_uri='', other_params=''):
+        params = '&uri='
+        if (ds_uri == 'all'):
+            params += 'all'
+        else:
+            params += Dataset.set(ds_uri, 'uri')
+                    
         if (other_params): 
             params += other_params
         else:
-            params += '&meta=True' + '&mode=dataset'
+            params += '&meta=True' # + '&mode=dataset'
             
         response = wsf_request("dataset/read/",params,"get", 'text/xml')
         if (not isinstance(response,dict)):
@@ -247,27 +312,25 @@ class Dataset:
         return response
 
     @staticmethod
-    def delete(ds_id=None):
+    def delete(ds_id=''):
         params = '&uri=' + urllib.quote_plus(Dataset.set(ds_id))
         response = wsf_request("dataset/delete", params, "get") 
         return response
         
     @staticmethod
-    def create(ds_id=None, title=None, description=None, creator=None):
-        ds = '&uri=' + urllib.quote_plus(Dataset.set(ds_id))
+    def create(ds_id='', title='', description=''):
+        ds = '&uri=' + Dataset.set(ds_id) # urllib.quote_plus(Dataset.set(ds_id))
         # Parameter default for title is not used because ds_id may be passed in
         if (not title): title = Dataset.get('id') 
         params = ds + '&title=' + urllib.quote_plus(title)
         if (description): params += '&description=' + urllib.quote_plus(description)
-        if (creator): params += urllib.quote_plus(creator)       
         response = wsf_request("dataset/create", params, "post") 
         if (not response):
             response = Dataset.auth_registrar_access(Dataset.get())     
         return response
     
     @staticmethod
-    def auth_registrar_access(ds_id=None, action='create'):
-        #Sets the right permissions
+    def auth_registrar_access(ds_id='', action='create'):
         ds = '&dataset=' + Dataset.set(ds_id)
         params = ds
         params += '&ws_uris='
@@ -291,7 +354,7 @@ class Dataset:
         return response
     
     @staticmethod
-    def ids(other_params=None):
+    def ids(other_params=''):
         params = '&mode=dataset'
         if (other_params): params += other_params
         response = wsf_request("auth/lister", params, "get", 'text/xml')
@@ -302,7 +365,7 @@ class Dataset:
         return response
     
     @staticmethod
-    def list(v='detail', other_params=None):    
+    def list(v='detail', other_params=''):    
     # it may be possible to avoid multiple calls by using '&uri=all' with Dataset.read
         response = None
         params = '&mode=dataset'
@@ -324,7 +387,7 @@ class Dataset:
                         for d in r['li']:
                             if ('ref' in d):
                                ds_uri = d['ref'].replace('@@','')
-                               if (ds_root in ds_uri):
+                               if (ds_root and (ds_root in ds_uri)):
                                    ds = Dataset.read(ds_uri)
                                    if ('dataset' in ds):
                                        response['recordList'].append(ds['dataset'])       
@@ -339,51 +402,77 @@ class Record:
     '''
     CHECK FOR VALID PATHS - NO SPACES OR WEIRD CHARS
     '''
+    '''
+    RECENTLY LEARNED ID=URI SO MUCH OF THIS CODE CAN BE CLEANED UP
+    
+    CHECK FOR ID VS. URI BY LOOKING AT @ VERSUS @@
+    
+    SET ID BY STRIPPING DATASET_URI
+    SET URI BY ADDING DATASET_URI
+    '''
     part = {
-        'uri': None,
-        'id': None   
+        'uri': '',
+        'id': ''   
         }
     @staticmethod
-    def set (value):        
-        if (value) : # value should be either a uri or id            
-            if (value[0:7] == 'http://'): # value is a uri            
-                Record.part['uri'] = unslash_end(value)
-                id_start = Record.part['uri'].rfind('/',0) + 1
-                Record.part['id'] = Record.part['uri'][id_start:]
-                Dataset.set(Record.part['uri'][0:id_start-1])
+    def set (value, k=''):        
+        if (value and (not k)) : # value should be either a uri or id            
+            if ((value[0:2] == '@@') or (value[0:7] == 'http://')): # value is a uri                    
+                Record.set(value, 'uri')
             else:
-                Record.part['id'] =  unslash_end(value)
-                Record.part['uri'] = Dataset.part['uri'] + Record.part['id']         
-        return Record.part['uri']
+                Record.set(value, 'id')
+        elif (value and (k in Record.part)):
+            if(k == 'id'):
+                Record.part['id']  = unslash_end(value.replace('@','',2))
+                Record.part['uri'] = Dataset.get()+Record.part['id'] 
+            elif (k == 'uri'):
+                Record.part['uri'] = unslash_end(value.replace('@','',2))
+                Record.part['id'] = unslash_end(Record.part['uri'].replace(Dataset.get(),'')) 
+                #id_start = Record.part['uri'].rfind('/',0) + 1
+                #Dataset.set(Record.part['uri'][0:id_start-1]) # dataset not necessarily root of uri
+                #Record.part['id'] = Record.part['uri']
+                
+        return Record.get('uri')
 
     @staticmethod
-    def get ():
-        return Record.part['uri']
+    def get (v='uri', k=''):
+        response = Record.part['uri']
+        if (k and (k == 'id')):
+            response = Record.part['id']            
+        return response 
 
     @staticmethod
-    def read(record_id=None, ds_id=None, other_params=None):
+    def read(record_id='', ds_id='', other_params=''):
         params = ''
         #params += '&include_linksback=True&include_reification=True'
-        #allow ds_id to be a uri or id
+        # if an id is none 'set' will return the current uri
         
-        params += '&uri=' + Record.set(record_id) # do this first so dataset uri gets set
+        params += '&uri=' + Record.set(record_id, 'uri') # do this first so dataset uri gets set
         params += '&dataset=' + Dataset.set(ds_id)
-        if (other_params): params += other_params
+        params += other_params
         response = wsf_request('crud/read', params, 'get', 'bibjson')
         return response
     
     @staticmethod
-    def update(record, ds_id=None, debug = False):
+    def update(record, ds_id=''):
         '''
+            record should have an id
             SHOULD SET Record.set() id, need to test for recordList or 'id'
+            
+            SEEMS LIKE STRUCTWSF PREPENDS DATASET URI TO RECORD ID
+            SO THE RECORD ID IN BIBJSON MUST NOT INCLUDE THE DATASET URI
+            
         '''
+        Dataset.set(ds_id) #Dataset.set(ds_id, 'uri')
         response = None
         rdf = None
         bibjson = {}
         bibjson['recordList'] = []
         bibjson['dataset'] = Dataset.template()
-        bibjson['dataset']['id'] = Dataset.get('uri')
-    
+        bibjson['dataset']['id'] = Dataset.get('uri') #Dataset.get('uri')
+        '''
+        TODO: CHECK record['id] TO MAKE SURE IT LOOKS VALID
+        '''
         if (isinstance(record,dict) and ('dataset' in record)):
             # the record is in full bibjson format
             bibjson = record
@@ -394,20 +483,18 @@ class Record:
         else:
             # assume record is a fully-baked dataset already converted to an rdf string
             rdf = record
-        
+            
         if (not rdf):
-            rdf = convert_json_to_rdf(bibjson, debug)   
+            rdf = convert_json_to_rdf(bibjson)   
 
         if(isinstance(rdf,dict) ):
             response = rdf
         else:    
-            params = '&dataset=' + Dataset.set(ds_id)
+            params = '&dataset=' + Dataset.get('uri')
             params += "&mime="+urllib.quote_plus("application/rdf+xml")
             params += "&document="+rdf
-            if not debug:
-                response = wsf_request("crud/update", params,"post",'*/*')
-            else:
-                response = wsf_request_curl("crud/update", params,"post",'*/*')
+            
+            response = wsf_request("crud/update", params,"post",'*/*')
         return response
     
     '''
@@ -415,8 +502,9 @@ class Record:
     all existing data will remain the same.
     '''
     @staticmethod
-    def add (record, ds_id=None, debug = False):
+    def add (record, ds_id=''):
         '''
+            record should have an id
             SHOULD SET Record.set() id, need to test for recordList or 'id'        
         '''
         response = None
@@ -424,7 +512,8 @@ class Record:
         bibjson = {}
         bibjson['recordList'] = []
         bibjson['dataset'] = Dataset.template()
-        bibjson['dataset']['id'] = Dataset.get('uri')
+        Dataset.set(ds_id)
+        bibjson['dataset']['id'] =  Dataset.get('uri') #Dataset.set(ds_id, 'uri')
     
         if (isinstance(record,dict) and ('dataset' in record)):
             # the record is in full bibjson format
@@ -438,37 +527,32 @@ class Record:
             rdf = record
         
         if (not rdf):
-            rdf = convert_json_to_rdf(bibjson, debug)   
+            rdf = convert_json_to_rdf(bibjson)   
 
         if(isinstance(rdf,dict) ):
-            response = rdf
-        else:            
-            ds = '&dataset=' + Dataset.set(ds_id)
+            response = rdf       # the convert failed
+        elif (('dataset' in bibjson) and ('id' in bibjson['dataset'])):
+            ds = '&dataset=' + Dataset.get('uri')
             mime = "&mime="+urllib.quote_plus("application/rdf+xml")
             doc = "&document="+urllib.quote_plus(str(rdf))
             params = ds + mime + doc
-            if not debug:
-                response = wsf_request("crud/create", params,"post",'*/*')    
-            else:
-                response = wsf_request_curl("crud/create", params,"post",'*/*')    
+            response = wsf_request("crud/create", params,"post",'*/*')    
         return response
 
 
     @staticmethod
-    def delete (record_id, ds_id):
+    def delete (record_uri, dataset_uri):
         '''
         No default parameters because we don't want inadvertent delete of the current record.
         Parameters can be ids or uris. They are converted to uris
         '''
-        record_uri = Record.set(record_id)
-        dataset_uri = Dataset.set(ds_id)
         if (record_uri and dataset_uri):
             params = ''
-            params += '&uri=' + record_id
-            params += '&dataset=' + ds_id
-            response = wsf_request('crud/delete', params, 'get', 'bibjson')
+            params += '&uri=' + record_uri
+            params += '&dataset=' + dataset_uri
+            response = wsf_request('crud/delete', params, 'get', '*/*')
         else:
-            response = {error: 'No parameters specified for Record.delete()'}
+            response = {'error': 'No parameters specified for Record.delete()'}
 
         return response
         
@@ -482,10 +566,12 @@ deb = 1 in the wsf_request function
 '''
 debug should be replaces by optional logging
 '''
+def debug (str): 
+    print str
 
 def wsf_request (service, params, http_method="post", accept_header="application/json", deb = 0):
+    deb = 0
     if (service[-1] != '/'): service += '/' 
-    #This is the main method that passes calls to structwsf
     # as of 6/8/10 the service root to call services uses /ws/
     # and the service root when referring to a service is /wsf/ws/
     #s = 'http://people.bibkn.org/ws/'+ service
@@ -501,12 +587,13 @@ def wsf_request (service, params, http_method="post", accept_header="application
         response_format = "other"
 
 # This output is helpful to include when reporting bugs
-    if deb: logger.debug( '\n\nHEADER:\n'+str(header))
-    if deb: logger.debug( '\nREQUEST: \n'+s+'?'+p)
+    if deb: debug( '\n\nHEADER:\n'+str(header))
+    if deb: debug( '\nREQUEST: \n'+s+'?'+p)
     response = None
     #print s+"?"+p
     #print header
     
+    delta = time.time()
     try:
         if (http_method == "get"):
             req = urllib2.Request(s+"?"+p, headers = header)        
@@ -521,18 +608,19 @@ def wsf_request (service, params, http_method="post", accept_header="application
     except urllib2.URLError, err: 
         response = {'error':'URLError','reason':err.reason}
     except:
-        response = {'error':'unknown','reason':None}
+        response = {'error':'unknown','reason':''}
     else:
         response = fp.read()
         fp.close()
         
-    if deb: logger.debug( '\nWSF CALL RESPONSE:\n'+ str(response))
+    delta = time.time() - delta
+    if deb: debug( '\nWSF CALL RESPONSE: (response time:'+str(delta)+')\n'+ str(response))
     try:
         if (response and (not isinstance(response, dict)) and (response_format == "json")):
             response = simplejson.loads(response)
     except: # this catches url and http errors        
-        if deb: logger.debug( 'BAD JSON:')
-        if (not isinstance(response, dict)): logger.debug( response.replace('\\n','\n'))
+        if deb: debug( 'BAD JSON:')
+        if (not isinstance(response, dict)): debug( response.replace('\\n','\n'))
         response = {'error':'simplejsonError','reason':'bad json', "response":response}
     
     #print '\nWSF CALL RESPONSE:\n', response        
@@ -604,6 +692,9 @@ def wsf_request_curl (service, params, http_method="post", accept_header="applic
     
     #print '\nWSF CALL RESPONSE:\n', response        
     return response
+
+
+
 def convert_bibtex_to_text_xml(data):
     mime = "&docmime="+urllib.quote_plus("application/x-bibtex")
     doc = "&document="+urllib.quote_plus(data)
@@ -627,14 +718,11 @@ def convert_json_to_text_xml(data):
     response = wsf_request("converter/irjson/", params, "post","text/xml")
     return response     
 
-def convert_json_to_rdf(data, debug = False):
+def convert_json_to_rdf(data):
     mime = "&docmime="+urllib.quote_plus("application/iron+json")
     doc = "&document="+urllib.quote_plus(simplejson.dumps(data))
     params = mime + doc
-    if not debug:
-        response = wsf_request("converter/irjson/", params, "post","application/rdf+xml")
-    else:
-        response = wsf_request_curl("converter/irjson/", params, "post","application/rdf+xml")
+    response = wsf_request("converter/irjson/", params, "post","application/rdf+xml")
     return response
 
 
@@ -681,9 +769,15 @@ def get_result_facets(response):
                 
 
 
+def extract_dataset_uri_from_browse_response(r):
+    uri = ''
+    if ('isPartOf' in r):
+        if ('ref' in r['isPartOf']):
+            uri = r['isPartOf']['ref'].replace('@@','')
+    return uri
 
 def extract_dataset_id_from_browse_response(r):
-    id = None
+    id = ''
     if ('isPartOf' in r):
         if ('ref' in r['isPartOf']):
             id_uri = r['isPartOf']['ref'].replace('@@','')
@@ -692,23 +786,8 @@ def extract_dataset_id_from_browse_response(r):
                 id = id[0:-1] # remove trailing /
     return id
 
-def search(query, ds_uris=None, items=10, page=0, other_params=None):
-    if not ds_uris: ds_uris = Dataset.get('uri')
-    # other params: &types= &attributes= &inference= &include_aggregates=
-    params = '&query='+query + '&include_aggregates=true'
-    # ds_uris can accept multiple uris so we don't want to update the Dataset object
-    # Default to curremt datast if none is passed
-    # This means 'all' needs to be explicitly passed to search all datasets
-    params += '&datasets=' + ds_uris
-    if (items): params += '&items='+str(items)
-    if (page):  params += '&page='+str(page)
-    if (other_params): params += other_params
-    response = wsf_request('search', params, 'post', 'text/xml')
-    data = Dataset.get('detail',response)
-    return data
 
-
-def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1, debug = False):
+def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1):
 #How to keep track of what we've imported already?    
     f_hku = codecs.open(datasource,'r', "utf-8")    
     json_str = f_hku.read()
@@ -716,40 +795,39 @@ def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1,
     f_hku.close()
     bib_import = {}
     bib_import['dataset'] = bibjson['dataset']
-    bib_import['dataset']['id'] = Dataset.get('uri')
+    bib_import['dataset']['id'] = Dataset.get('id') #Dataset.get('uri')
 # SET TO TEST
     count = 0
     status = {'code': 'ok'}
+    Dataset.set(ds_id)
     for i in range(start,len(bibjson['recordList']), import_interval):
         count += 1
-        logger.debug( count)
+        debug( count)
 # BREAKS HERE IF TESTING
         if (testlimit and (count > testlimit)) : break      
         bib_import['recordList'] = bibjson['recordList'][i:i+import_interval]
-        rdf = convert_json_to_rdf(bib_import, debug)
-        rdf_file = open("temp.rdf.xml","w")
-        rdf_file.write(str(rdf))
-        rdf_file.close()
-        response = Record.add(str(rdf),Dataset.set(ds_id), debug)
+        rdf = convert_json_to_rdf(bib_import)
+        response = Record.add(str(rdf),Dataset.get()) #Dataset.set(ds_id, 'uri')
 #If there are any records left, import the rest as the last batch
     if not (testlimit and (count > testlimit)) :  
         bib_import['recordList'] = bibjson['recordList'][i+import_interval:]
         if len(bib_import['recordList'])>0:
-            rdf = convert_json_to_rdf(bib_import, debug)
-            response = Record.add(str(rdf),Dataset.set(ds_id), debug)
+            rdf = convert_json_to_rdf(bib_import)
+            response = Record.add(str(rdf),Dataset.get())  # Dataset.set(ds_id, 'uri')
     return status
 
-def create_and_import (ds_id, datasource, title=None, description='', testlimit = None , import_interval = 1, debug = False):
+def create_and_import (ds_id, datasource, title='', description='', testlimit = None , import_interval = 1):
     response = Dataset.create(Dataset.set(ds_id), title, description)
     if response:
-        logger.debug( 'Error, Dataset probably exists')
+        debug( 'Error')
+        debug( 'Dataset probably exists')
     # Dataset.create calls to set access
     #if (not response): response = Dataset.auth_registrar_access(Dataset.get()) 
     if (not response):
-        response = data_import(Dataset.get(), datasource,testlimit=testlimit, import_interval = import_interval, debug = debug)
+        response = data_import(Dataset.get(), datasource,testlimit=testlimit, import_interval = import_interval)
     return response
 
-def get_bkn_wsf_param(cgi_fields, key):
+def get_bkn_wsf_service_param(cgi_fields, key):
     response = None
     params = cgi_fields.getfirst('params')
     obj = None
@@ -762,18 +840,69 @@ def get_bkn_wsf_param(cgi_fields, key):
         len(obj[key])
         ):
         response = obj[key][0]
-    return response 
     
-def autotest():
+    return response  
+    
+def test_dataset_setting():
+    print "Dataset.set test init"
+    template = Dataset.part['template']
+    print "template:",template
+    Dataset.part['template'] = None # make it easier to print part for root, id, and uri
+    
+    print Dataset.part
+    print "Dataset.make_root()"
+    Dataset.set(BKNWSF.get()+'datasets/'+'test_makeroot')
+    print Dataset.part
+
+    print "\nDataset.set(...,'root')"
+    Dataset.set(BKNWSF.get()+'datasets/','root')
+    print Dataset.part
+    print "\nDataset.set(id)", Dataset.set('dataset1')
+    print Dataset.part
+    print "\nDataset.set(root+id)", Dataset.set(Dataset.get('root')+"dataset2")
+    print Dataset.part
+    print "\nDataset.set(@@uri)", Dataset.set("@@"+Dataset.part['uri'])
+    print Dataset.part
+    print "\nDataset.set(@id)", Dataset.set("@"+Dataset.part['id'])
+    print Dataset.part
+    print "\nDataset.get()", Dataset.get()
+    Dataset.part['template'] = template
+
+    print "\nRecord.set test init"
+    print Record.part
+    print "\nRecord.set(id)", Record.set('record1')
+    print Record.part
+    print "\nRecord.set(ds_uri+id)", Record.set(Dataset.get()+'record2')
+    print Record.part
+    print "\nRecord.get()", Record.get()
+
+    print "\n\nAny side effect to Dataset?"
+    print Dataset.part    
+    print
+    print
+    
+        
+def autotest(root='http://people.bibkn.org/wsf/'):
+    '''
+    TODO:
+        report pass/fail
+        check responses for errors
+        automate checking of results
+        clean up after errors
+        error summary 
+    '''
     print 'autotest'
+    response = {}
     test_result = {}
+    BKNWSF.set(root,'root')
+    Service.set(BKNWSF.get()+'ws/','root')    
+    test_dataset_setting()
+    Dataset.set(BKNWSF.get()+'datasets/','root')
+
     print "Dataset.list('ids') "
     response = Dataset.list('ids')
     if (not response) or ('error' in response): print ':error: '+ str(response)
-    print "Dataset.list()"
-    '''
-    skip temporarily
-    '''
+    #print "skip Dataset.list()"
     response = Dataset.list()
     if (not response) or ('error' in response): print ':error: '+ str(response)
     print Dataset.set('dataset_test')
@@ -786,7 +915,7 @@ def autotest():
         response = Dataset.read() # 'all' returns bad json error
         if (not response) or ('error' in response): print ':error: '+ str(response)
         record_id = '1'
-        print Record.set(record_id)
+        print "Record.set(record_id)",Record.set(record_id)
         bibjson = {"name": "add","id": record_id}
         print "Record.add() "
         response = Record.add(bibjson)
@@ -809,8 +938,16 @@ def autotest():
                     response = Record.read()
                     if (not response) or ('error' in response): 
                         print ':error: '+ str(response)
-        print "Dataset.browse() "
-        response = Dataset.browse()
+                record_id = '2'
+                Record.set(record_id)
+                print "Record.delete() ", Record.get()
+                bibjson = {"name": "this should be deleted","id": record_id}
+                response = Record.add(bibjson)
+                Record.delete(Record.get(), Dataset.get())
+                
+
+        print "BKNWSF.browse() "
+        response = BKNWSF.browse()
         print simplejson.dumps(response, indent=2)
         
         print "Dataset.delete() "
@@ -819,41 +956,37 @@ def autotest():
             print ':error: '+ str(response)
     return response
 
+
 def wsf_test():
     response = {}
-    BKNWSF.set('http://people.bibkn.org/wsf/','root')
+    #instance = 'http://www.bibkn.org/wsf/'
+    instance = 'http://datasets.bibsoup.org/wsf/'
+    #autotest(instance)
+    BKNWSF.set(instance,'root')
     Service.set(BKNWSF.get()+'ws/','root')    
     Dataset.set(BKNWSF.get()+'datasets/','root')
-    
-    autotest()
-    #Dataset.set('jack_update_test')
-    #print Dataset.set('mgp_id')  
-    #response = Dataset.browse()
-    if 0:
-        response = Dataset.set('dataset_test')
-        print Record.set('1')
-        response =  Record.read()
-        response = Dataset.delete()
-        response = Dataset.read()
+    #Dataset.set('dataset_test')
+
+    #bkn_wsf_py_services(None)
+    #response = Dataset.create() # this calls auth_registar_access
+    #response = Dataset.delete();
     #init_logging()
     other_params = ''
-    #Dataset.set('jack_update_test')
-    #ds_id = Dataset.part['id']
-    #record_id = ds_id+microtime_id()
-    #record_id = ds_id+"lucky69"
-    #response = get_dataset_ids()
-    #response = create_and_import(ds_id, 'in.json')
-    #response = data_import(ds_id, 'in.json')
-    #response = Dataset.read(ds_id) # 'all' returns bad json error 
-    #Dataset.set('jack_test_create')  
-    #response = Record.read(Record.set('ja1'))  
-    Dataset.set('jack_test_create')  
+    Dataset.set('new_jack')
+    #response = BKNWSF.browse()
+    #response = Dataset.list();
+    #response = Dataset.list('ids');
+    #response = Dataset.list('details')    
+    #response = Dataset.read('all')
+    #response = Dataset.read(Dataset.set('')))
+    
     #response = create_and_import(Dataset.set('jack_test_create'), 'in.json')    
     #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
     #response = data_import(Dataset.set('jack_test_create'), 'in.json')
     #response = Record.read(Record.set('1'))  
-    #response = search('Pitman') 
-    #response = search('Pitman', 'all', 10, 0, other_params) 
+    #response = BKNWSF.search('Pitman') 
+    #response = BKNWSF.search('Pitman', 'all', 10, 0, other_params) 
+    #response = BKNWSF.browse(None,1)
     print simplejson.dumps(response, indent=2)
     print '\n'    
     if (('recordList' in response) and response['recordList']):
@@ -875,16 +1008,25 @@ def jim_test():
     BKNWSF.set('http://people.bibkn.org/wsf/','root')
     Service.set(BKNWSF.get()+'ws/','root')    
     Dataset.set(BKNWSF.get()+'datasets/','root')
-    #Create a dataset object
     ds = Dataset()
-    #set denotes which dataset id you want to work with
-    ds.set('mass_import_test5')
-    #deletes what's already there in order to start afresh
+    ds.set('mass_import_test3')
+#    print Record.set('1')
     response = ds.delete()
-    other_params = ''
-    ds_id = Dataset.part['id']
-    response = create_and_import(ds.part['id'], 'ACM.json',testlimit=1,import_interval = 2000, debug=True)        
-    print ds.browse()
+    init_logging()
+    other_params = ''    
+    
+    # Jack Alves modified because Dataset id/uri behavior was updated
+    
+    #response = create_and_import(ds.part['id'], '/Users/Jim/Desktop/Bibkn/hku_idify.json',testlimit=1,import_interval = 2000)    
+    ds_id = 'mass_import_test3'
+    ds_uri = Dataset.set(ds_id)
+    response = create_and_import(dataset_uri, '/Users/Jim/Desktop/Bibkn/hku_idify.json',testlimit=1,import_interval = 2000)    
+    print BKNWSF.browse()
+    #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
+    #response = data_import(Dataset.set('jack_test_create'), 'in.json')
+    #response = Record.read(Record.set('1'))  
+    #response = BKNWSF.search('Pitman') 
+    #response = BKNWSF.search('Pitman', 'all', 10, 0, other_params) 
     print simplejson.dumps(response, indent=2)
     print '\n'    
     """
@@ -901,82 +1043,169 @@ def jim_test():
             print '\t Person - \t just people'    
     """
 #wsf_test()
-jim_test()
 
-
-
-cgi_fields = cgi.FieldStorage()    
-
-callback = None
-if 'callback' in cgi_fields: callback = cgi_fields.getfirst('callback') 
-
-if not callback: 
-    if (('service' in cgi_fields) and (cgi_fields.getfirst('service') == 'get_remote_ip')):
-        #don't semd end of line for print. We want to return a single line string      
-        print 'Content-type: text/plain \n\n',
-        print str(BKNWSF.ip()),    
-else:       
+def bkn_wsf_py_services (cgi_fields):
     '''
-    YOU MUST EXPLICITLY INITIALIZE THE WSF_SERVICE and DATASET ROOT 
+    TO TEST SET, if 1:
     '''
-    BKNWSF.set('http://people.bibkn.org/wsf/','root')
-    Service.set(BKNWSF.get()+'ws/','root')
-    Dataset.set(BKNWSF.get()+'datasets/','root')
-    #json = urllib.unquote( cgi_fields.getfirst(k)) 
-    
-    service = cgi_fields.getfirst('service')
-    response = {}
-    dataset_uri = get_bkn_wsf_service_param(cgi_fields,'dataset')
-    record_uri =  get_bkn_wsf_service_param(cgi_fields,'uri')
-    bibjson = get_bkn_wsf_service_param(cgi_fields,'document')
-    if (bibjson):
-        bibjson = simplejson.loads(bibjson)
-    
-    Dataset.set(dataset_uri)
-    Record.set(record_uri)
-    if (dataset_uri): 
-        ds.set(dataset_uri)
-    if (record_uri): 
-        r.set(record_uri)
+    if 0:
+        bkn_root = 'http://datasets.bibsoup.org/wsf/'
+        #bkn_root = 'http://people.bibkn.org/wsf/'
+        service_root = bkn_root+'ws/'
+        dataset_root = bkn_root+'datasets/'            
+        service =        'dataset_list'
+        query = 'pitman'
+        items = ''
+        page =  ''
+        dataset_uri =       dataset_root+'new_jack/'
+        datasets_uri_list = 'all'
+        record_uri =        dataset_uri+'jack3'
+        bibjson =           ''
 
-    error = True
-    if service == 'test':
-        ds.set('jack_update_test')
-        error = False             
-    elif service == 'browse':
-        '''
-        ADD FORMATTED FACETS TO RETURN
-        ''' 
-        response = ds.browse()
-        error = False             
-    elif service == 'record_read':
-        response = r.read(r.set(record_uri))
-        error = False             
-    elif service == 'record_update':   
-        response = r.update(bibjson)
-        if (not response): 
-            error = False
-            response = r.read(r.set(record_uri))
-    elif service == 'record_add':   
-        # This can be used to add or update a single attribute
-        response = r.add(bibjson)
-        if (not response): 
-            error = False
-            response = r.read(r.set(record_uri))
-    elif service == 'record_delete':   
-        response = Record.delete(Record.set(record_uri), Dataset.set(dataset_uri))
-        if (not response): 
-            error = False
-            response = Record.read()
+    callback = ''
+    if (cgi_fields and ('callback' in cgi_fields)): 
+        callback = cgi_fields.getfirst('callback') 
+    
+    if ((not callback) and cgi_fields and ('service' in cgi_fields) and 
+            (cgi_fields.getfirst('service') == 'get_remote_ip')):
+            #don't semd end of line for print. We want to return a single line string      
+            print 'Content-type: text/plain \n\n',
+            print str(BKNWSF.ip()),
+            return    
+    else:       
+        if (cgi_fields):
+            bkn_root =          cgi_fields.getfirst('bkn_root')           
+            service_root =      cgi_fields.getfirst('service_root')
+            dataset_root =      cgi_fields.getfirst('dataset_root')            
+            service =           cgi_fields.getfirst('service')
+            query =             get_bkn_wsf_service_param(cgi_fields,'query')
+            items =             get_bkn_wsf_service_param(cgi_fields,'items')
+            page =              get_bkn_wsf_service_param(cgi_fields,'page')
+            datasets_uri_list = str(get_bkn_wsf_service_param(cgi_fields,'datasets'))
+            dataset_uri =       str(get_bkn_wsf_service_param(cgi_fields,'dataset'))
+            record_uri =        str(get_bkn_wsf_service_param(cgi_fields,'uri'))
+            bibjson =           get_bkn_wsf_service_param(cgi_fields,'document')
+    
+        response = {}
+        error = False
+        BKNWSF.set(bkn_root,'root') # 'http://people.bibkn.org/wsf/'
+        if(not bkn_root or (bkn_root == '')):
+            error = True
+            response['error'] = 'bkn_root was not specified.'
+    
+        Service.set(BKNWSF.get()+'ws/','root')
+        if (service_root): Service.set(service_root,'root')
+        Dataset.set(BKNWSF.get()+'datasets/','root')            
+        if (dataset_root): Dataset.set(dataset_root,'root')
+    
+        if (bibjson):               bibjson = simplejson.loads(bibjson)
+        if (dataset_uri):           Dataset.set(dataset_uri, 'uri')
+        if (record_uri):            Record.set(record_uri, 'uri')
+        if (not datasets_uri_list): datasets_uri_list = dataset_uri
+        if (not page):              page = '0'
+        if (not items):             items = '10'
         
-    #response = simplejson.dumps(bigd)#.replace('\n','<br>').replace('  ','&nbsp;&nbsp;')
-    #if 'jsonp' in cgi_fields: callback  = cgi_fields.getfirst('jsonp') 
-    #response = browse(ds_id, 10, 0, '')      
-    if error:
-        response['params'] = cgi_fields.getfirst('params')
+        if (error):
+            if (not response): 
+                response = {'error': 'unknown'}        
+        elif (not service):
+            response['error'] = 'No service specified'
+            error = True
+        elif service == 'test':
+            Dataset.set('jack_update_test')
+            response = {} # need to make sure to return a dict not ""
+            error = True             
+        elif service == 'search':
+            '''
+            ADD FORMATTED FACETS TO RETURN
+            ''' 
+            response = BKNWSF.search(query, datasets_uri_list, items, page)
+            if (not response): 
+                response = {} # need to make sure to return a dict not ""
+                error = True
+        elif service == 'dataset_list':
+            response = Dataset.list()
+            if (not response): 
+                response = {} # need to make sure to return a dict not ""
+                error = True        
+        elif service == 'dataset_create':
+            #print simplejson.dumps(response,indent=1)
+            #(ds_id='', title='', description='', creator='')
+            record_uri = '' # by default this uses the uri parameter, so clear it in case it gets used
+            dataset_uri =   str(get_bkn_wsf_service_param(cgi_fields,'uri'))
+            title =         str(get_bkn_wsf_service_param(cgi_fields,'title'))
+            description =   str(get_bkn_wsf_service_param(cgi_fields,'description'))
+            Dataset.set(dataset_uri)
+            response = Dataset.create(dataset_uri, title, description)
+            if (response): 
+                error = True
+            else:
+                response = {} # need to make sure to return a dict not ""
+        elif service == 'dataset_delete':
+            '''
+            Need to test, may not ever enable this as a service
+            '''
+            #print simplejson.dumps(response,indent=1)
+            #response = Dataset.delete()
+            if (response): 
+                error = True
+            else:
+                response = {} # need to make sure to return a dict not ""
+        elif service == 'browse':
+            '''
+            ADD FORMATTED FACETS TO RETURN
+            '''             
+            response = BKNWSF.browse(datasets_uri_list, items, page)
+            if (not response): 
+                response = {} # need to make sure to return a dict not ""
+                error = True
+        elif service == 'record_read':
+            response = Record.read(Record.set(record_uri))
+            if (not response): 
+                response = {} # need to make sure to return a dict not ""
+                error = True
+        elif service == 'record_update': 
+            response = Record.update(bibjson)
+            if (not response): 
+                response = Record.read(Record.set(record_uri))
+                if (not response): 
+                    response = {} # need to make sure to return a dict not ""
+                    error = True
+            else:
+                error = True
+        elif service == 'record_add':   
+            # This can be used to add or update a single attribute
+            response = Record.add(bibjson)
+            if (not response): 
+                response = Record.read(Record.set(record_uri))
+                if (not response): 
+                    response = {} # need to make sure to return a dict not ""
+                    error = True
+            else:
+                error = True
+        elif service == 'record_delete':   
+            response = Record.delete(Record.set(record_uri), Dataset.set(dataset_uri, 'uri'))
+            if (response): 
+                error = True
+            else:
+                response = {} # need to make sure to return a dict not ""
+                #response = Record.read()
+            
+        #response = simplejson.dumps(bigd)#.replace('\n','<br>').replace('  ','&nbsp;&nbsp;')
+        #if 'jsonp' in cgi_fields: callback  = cgi_fields.getfirst('jsonp') 
+        #response = browse(ds_id, 10, 0, '')      
+        if error:
+            response['params'] = '' #cgi_fields.getfirst('params')
+    
+        print 'Content-type: text/plain \n\n'
+        print callback+'('+simplejson.dumps(response)+')'
 
-    print 'Content-type: text/plain \n\n'
-    print callback+'('+simplejson.dumps(response)+')'
 
+
+# bkn_wsf.py can be used as a web service see bkn_wsf_py_services()
+cgitb.enable()
+cgi_fields = cgi.FieldStorage()    
+if (cgi_fields):
+    bkn_wsf_py_services(cgi_fields)
 
 
