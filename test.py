@@ -17,6 +17,6 @@ but if one prefers they can use just the bkn_wsf file for experiments.
 
 '''
     
-wsf_test()
+Test.wsf_test()
     
     
