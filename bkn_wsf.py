@@ -60,6 +60,8 @@
 # CHANGES since last check-in:
 # 8/19/2010
 #
+# fixed - Dataset.list() case where id results set has a dict for ['li']={'ref':''} instead of an array
+#     
 # new class Test
 #    moved test functions into class
 #    
@@ -86,8 +88,11 @@ import urlparse
 import simplejson
 import sys
 import cgi, cgitb 
+# bkn_wsf.py can be used as a web service see BKNWSF.web_proxy_services()
+cgitb.enable()
 
 #print os.getcwd()
+
 
 ## Configure debug logging
 #
@@ -122,10 +127,6 @@ class Logger():
         ch.setLevel(logging.DEBUG)
         ch.setFormatter(self.formatter)
         self.log.addHandler(ch)
-
-global logger
-logger = Logger()
-
 
 
 def microtime_id(): 
@@ -183,7 +184,10 @@ class BKNWSF:
     ## 
     @staticmethod
     def structwsf_request (service, params, http_method="post", accept_header="application/json", deb = 0):
-        deb = 0
+#        if deb:
+#            response = BKNWSF.structwsf_request_curl (service, params, http_method, accept_header, deb = 1)
+#            return response
+        
         if (service[-1] != '/'): service += '/' 
         # as of 6/8/10 the service root to call services uses /ws/
         # and the service root when referring to a service is /wsf/ws/
@@ -242,7 +246,6 @@ class BKNWSF:
     ##
     @staticmethod
     def structwsf_request_curl (service, params, http_method="post", accept_header="application/json", deb = 0):
-        deb = 0
         if (service[-1] != '/'): service += '/' 
         # as of 6/8/10 the service root to call services uses /ws/
         # and the service root when referring to a service is /wsf/ws/
@@ -409,10 +412,11 @@ class BKNWSF:
         
             response = {}
             error = False
-            BKNWSF.set(bkn_root,'root') # 'http://people.bibkn.org/wsf/'
             if(not bkn_root or (bkn_root == '')):
                 error = True
                 response['error'] = 'bkn_root was not specified.'
+            else:
+                BKNWSF.set(bkn_root,'root') # 'http://people.bibkn.org/wsf/'
         
             Service.set(BKNWSF.get()+'ws/','root')
             if (service_root): Service.set(service_root,'root')
@@ -445,7 +449,7 @@ class BKNWSF:
                     response = {} # need to make sure to return a dict not ""
                     error = True
             elif service == 'dataset_list':
-                response = Dataset.list()
+                response = Dataset.list()  
                 if (not response): 
                     response = {} # need to make sure to return a dict not ""
                     error = True        
@@ -489,6 +493,7 @@ class BKNWSF:
                 response = Record.update(bibjson)
                 if (not response): 
                     response = Record.read(Record.set(record_uri))
+#                    error=True
                     if (not response): 
                         response = {} # need to make sure to return a dict not ""
                         error = True
@@ -516,7 +521,14 @@ class BKNWSF:
             #if 'jsonp' in cgi_fields: callback  = cgi_fields.getfirst('jsonp') 
             #response = browse(ds_id, 10, 0, '')      
             if error:
-                response['params'] = '' #cgi_fields.getfirst('params')
+                response['params'] = urllib.quote_plus(cgi_fields.getfirst('params'))
+
+            #TEST DEBUG OUTPUT
+#            response['service'] =  service
+#            response['ip'] = BKNWSF.ip()
+#            response['dataset_uri'] = Dataset.get()
+#            response['record_uri'] = Record.get()
+            #TEST DEBUG OUTPUT
         
             print 'Content-type: text/plain \n\n'
             print callback+'('+simplejson.dumps(response)+')'
@@ -756,6 +768,14 @@ class Dataset:
     ##
     @staticmethod
     def list(v='detail', other_params=''):    
+        def get_dataset_detail_for_ref(response, ds_ref):
+            ds_uri = ds_ref.replace('@@','')
+            ds_root = Dataset.get('root')
+            if (ds_root and (ds_root in ds_uri)):
+                ds = Dataset.read(ds_uri)
+                if ('dataset' in ds) and ('recordList' in response):
+                   response['recordList'].append(ds['dataset'])       
+            
     # it may be possible to avoid multiple calls by using '&uri=all' with Dataset.read
         response = None
         params = '&mode=dataset'
@@ -774,13 +794,12 @@ class Dataset:
                 response = {'recordList':[]}
                 for r in ds_ids['recordList']:
                     if ('li' in r):
-                        for d in r['li']:
-                            if ('ref' in d):
-                               ds_uri = d['ref'].replace('@@','')
-                               if (ds_root and (ds_root in ds_uri)):
-                                   ds = Dataset.read(ds_uri)
-                                   if ('dataset' in ds):
-                                       response['recordList'].append(ds['dataset'])       
+                        if (isinstance(r['li'],dict) and ('ref' in r['li']) and (r['li']['ref'])):
+                            get_dataset_detail_for_ref(response, r['li']['ref'])
+                        else: # it should be an array
+                            for d in r['li']:
+                                if ('ref' in d) and (d['ref']):
+                                    get_dataset_detail_for_ref(response, d['ref'])
         return response
 
     ##
@@ -891,6 +910,14 @@ class Record:
             params += "&document="+rdf
             
             response = BKNWSF.structwsf_request("crud/update", params,"post",'*/*')
+        
+        #TEST DEBUG OUTPUT
+#        response = {}
+#        response['update_call_bibjson'] = bibjson
+#        response['update_call_params'] = params
+        #TEST DEBUG OUTPUT
+        
+        
         return response
     
     '''
@@ -1007,6 +1034,8 @@ class Test:
             clean up after errors
             error summary 
         '''
+        error = False
+        dataset_created = False
         print 'autotest'
         response = {}
         test_result = {}
@@ -1017,59 +1046,97 @@ class Test:
     
         print "Dataset.list('ids') "
         response = Dataset.list('ids')
-        if (not response) or ('error' in response): print ':error: '+ str(response)
-        #print "skip Dataset.list()"
-        response = Dataset.list()
-        if (not response) or ('error' in response): print ':error: '+ str(response)
+        if (not response) or ('error' in response): 
+            error = True
+            print ':error: '+ str(response)
+        print "skip Dataset.list()"
+        #response = Dataset.list()
+        if (not response) or ('error' in response): 
+            error = True
+            print ':error: '+ str(response)
         print Dataset.set('dataset_test')
         print "Dataset.create() ", Dataset.get()
-        response = Dataset.create() # this calls auth_registar_access
-        if (response): 
-            print ':error: '+ str(response)
-        else:
-            print "Dataset.read() "
-            response = Dataset.read() # 'all' returns bad json error
-            if (not response) or ('error' in response): print ':error: '+ str(response)
-            record_id = '1'
-            print "Record.set(record_id)",Record.set(record_id)
-            bibjson = {"name": "add","id": record_id}
-            print "Record.add() "
-            response = Record.add(bibjson)
+        try:
+            response = Dataset.create() # this calls auth_registar_access
             if (response): 
+                error = True
                 print ':error: '+ str(response)
             else:
-                print "Record.read() "
-                response = Record.read()
+                dataset_created = True
+                print "Dataset.read() "
+                response = Dataset.read() # 'all' returns bad json error
                 if (not response) or ('error' in response): 
+                    error = True
+                    print ':error: '+ str(response)
+                record_id = '1'
+                print "Record.set(record_id)",Record.set(record_id)
+                bibjson = {"name": "add","id": record_id}
+                print "Record.add() "
+                response = Record.add(bibjson)
+                if (response): 
+                    error = True
                     print ':error: '+ str(response)
                 else:
-                    bibjson = {"name": "update","id": record_id}
-                    print "Record.update() "
-                    
-                    response = Record.update(bibjson)                 
-                    if (response): 
+                    print "Record.read() "
+                    response = Record.read()
+                    if (not response) or ('error' in response): 
+                        error = True
                         print ':error: '+ str(response)
-                    else:            
-                        print "Record.read() "
-                        response = Record.read()
-                        if (not response) or ('error' in response): 
+                    else:
+                        bibjson = {"name": "update","id": record_id}
+                        print "Record.update() "
+                        
+                        response = Record.update(bibjson)                 
+                        if (response): 
+                            error = True
                             print ':error: '+ str(response)
-                    record_id = '2'
-                    Record.set(record_id)
-                    print "Record.delete() ", Record.get()
-                    bibjson = {"name": "this should be deleted","id": record_id}
-                    response = Record.add(bibjson)
-                    Record.delete(Record.get(), Dataset.get())
-                    
-    
+                        else:            
+                            print "Record.read() "
+                            response = Record.read()
+                            if (not response) or ('error' in response): 
+                                error = True
+                                print ':error: '+ str(response)
+                        record_id = '2'
+                        Record.set(record_id)
+                        print "Record.delete() ", Record.get()
+                        bibjson = {"name": "this should be deleted","id": record_id}
+                        response = Record.add(bibjson)
+                        if (response): 
+                            error = True
+                            print ':error: '+ str(response)
+                        
+                        Record.delete(Record.get(), Dataset.get())
+                        if (response): 
+                            error = True
+                            print ':error: '+ str(response)
+                        
+        
             print "BKNWSF.browse() "
             response = BKNWSF.browse()
-            print simplejson.dumps(response, indent=2)
-            
-            print "Dataset.delete() "
-            response = Dataset.delete()
-            if (response): 
+            if (not response) or ('error' in response): 
+                error = True
                 print ':error: '+ str(response)
+            print simplejson.dumps(response, indent=2)
+         
+        finally: # always check and report error,  then clean up if a dataset was created
+            if error:
+                print '\n\nTEST FAILED.\n'
+                print 'An error should be display immediately after the test that failed.'
+
+            else:
+                print '\n\nTEST PASSED.\n'
+                
+            if dataset_created:
+                print '\n\nCleaning up ...'
+                print "Dataset.delete() "
+                response = Dataset.delete()
+                if (response):
+                    error = True 
+                    print '\n\nTEST FAILED.\n'
+                    print ':error: '+ str(response)
+        
+        
+        
         return response
     
     
@@ -1078,24 +1145,52 @@ class Test:
         response = {}
         #instance = 'http://www.bibkn.org/wsf/'
         instance = 'http://datasets.bibsoup.org/wsf/'
-        Test.autotest(instance)
+        #Test.autotest(instance)
+        
         BKNWSF.set(instance,'root')
         Service.set(BKNWSF.get()+'ws/','root')    
         Dataset.set(BKNWSF.get()+'datasets/','root')
-        #Dataset.set('dataset_test')
-    
+        Dataset.set('dataset_test')
         #BKNWSF.web_proxy_services(None)
+
+        
+        Dataset.set('ja7')
+        record_id = 'jack_alves_1'
+        bibjson = {"name": "update test","id": record_id, "type":"Object", "status":"tested"}
+        response = Record.update(bibjson)                 
+        
+#        print "Record.update() "        
+#        response = Record.update(bibjson)                 
+#        if (response): 
+#            print ':error: '+ str(response)
+#        else:            
+#            print "Record.read() "
+#            response = Record.read()
+#            if (not response) or ('error' in response): 
+#                print ':error: '+ str(response)
+
         #response = Dataset.create() # this calls auth_registar_access
-        #response = Dataset.delete();
         #init_logging()
-        other_params = ''
-        Dataset.set('new_jack')
-        #response = BKNWSF.browse()
+        #'http://datasets.bibsoup.org/wsf/datasets/'
+        #Dataset.set('demo')
+        print
+        #Dataset.set('jack_sand')
+        #params = '&mode=access_dataset&dataset='+ Dataset.get('uri')
+        #ds_ids = BKNWSF.structwsf_request("auth/lister", params, "get", 'text/xml')
+        #print ds_ids
+        
+        
+        #response = Dataset.list('ids');
+        print simplejson.dumps(response, indent=2)
+        print
+        print
+        
+        response = BKNWSF.browse()
         #response = Dataset.list();
         #response = Dataset.list('ids');
-        #response = Dataset.list('details')    
-        #response = Dataset.read('all')
-        #response = Dataset.read(Dataset.set('')))
+        #response = Dataset.list('detail')    
+        #response = Dataset.read('all') #THIS GIVE BAD JSON ERROR
+        #response = Dataset.read(Dataset.set('sandbox'))
         
         #response = create_and_import(Dataset.set('jack_test_create'), 'in.json')    
         #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
@@ -1106,6 +1201,30 @@ class Test:
         #response = BKNWSF.browse(None,1)
         print simplejson.dumps(response, indent=2)
         print '\n'    
+        # TEST
+#        ds_ids = {'recordList': [ 
+#           {
+#            "id": "",
+#            "type": "Bag",
+#            "li": 
+#            {
+#            "ref": "" 
+#            }
+#            }]}        
+#        for r in ds_ids['recordList']:
+#            if ('li' in r):
+#                if (isinstance(r['li'], dict)):
+#                    ds_uri = r['li']['ref'].replace('@@','')
+#                    print 'after: ',ds_uri
+#                else:
+#                    for d in r['li']:
+#                        print 'd type:',
+#                        print type(d)
+#                        
+#                        if ('ref' in d):
+#                           ds_uri = d['ref'].replace('@@','')
+
+        
         if (('recordList' in response) and response['recordList']):
             # you can get total results by calling
             facets = get_result_facets(response)
@@ -1256,10 +1375,12 @@ def create_and_import (ds_id, datasource, title='', description='', testlimit = 
         response = data_import(Dataset.get(), datasource,testlimit=testlimit, import_interval = import_interval)
     return response
 
-
-
 # bkn_wsf.py can be used as a web service see BKNWSF.web_proxy_services()
 cgitb.enable()
 cgi_fields = cgi.FieldStorage()    
 if (cgi_fields):
     BKNWSF.web_proxy_services(cgi_fields)
+else:
+    global logger
+    logger = Logger()
+
