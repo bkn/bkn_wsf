@@ -58,21 +58,21 @@
 #
 #
 # CHANGES since last check-in:
-# 8/19/2010
 #
-# fixed - Dataset.list() case where id results set has a dict for ['li']={'ref':''} instead of an array
-#     
-# new class Test
-#    moved test functions into class
-#    
-# BKNWSF
-#    moved the following functions into class with new names: 
-#        BKNWSF.structwsf_request, 
-#        BKNWSF.structwsf_request_curl, 
-#        web_proxy_services(bkn_wsf_py_services) and related functions
-#        convert_???????
+# added methods for setting and reading auth
+#        response = Dataset.set(Dataset.get(), 'default_access')    
+#        response = Dataset.set(Dataset.get(), 'public_access')
+#        response = Dataset.auth_registrar_access(Dataset.get(), 'update', instance_ip, 'read_update', access_uri)        
+#        response = Dataset.list('ids');
+#        response = Dataset.list('description')    
+#        response = Dataset.list('access')    
+#        response = Dataset.list('access_detail')
+# new parameter for Dataset.read() added before last 'other_params' parameter
+#        response = Dataset.read(ds_id, 'description')    
+#        response = Dataset.read(ds_id, 'access')    
+#        response = Dataset.read(ds_id, 'access_detail')
 #
-# Started documentation in a form that can be used by doxygen to generate an HTML manual
+# Dataset.delete default for parameter removed
 #
 
 import re, os, logging
@@ -97,6 +97,21 @@ cgitb.enable()
 ## Configure debug logging
 #
 class Logger():
+    level = 0
+    @staticmethod
+    def set(v, k):
+        if (v and (k == 'level')):
+            Logger.level = v
+        return Logger.level
+
+    @staticmethod
+    def get(k):
+        response = Logger.level
+        # planning to support more keys
+        if (k == 'level'):
+            response = Logger.level
+        return response
+    
     ##Setting up logging
     def __init__(self):
         self.formatter = logging.Formatter("%(asctime)s - %(name)s\
@@ -148,14 +163,18 @@ def unslash_end (s):
 class BKNWSF:
     part = {
         'root': '',
-        'ip': os.getenv("REMOTE_ADDR")
+        'user_ip': os.getenv("REMOTE_ADDR"),
+         
+         # TODO: GET THE IP OF THE BKNWSF root
+         
+        'drupal_ip': '184.73.164.129'
             }
 
-    if ((not part['ip']) or (part['ip'] == '::1')): 
-        # This means we are executing locally
+    if ((not part['user_ip']) or (part['user_ip'] == '::1')): 
+        # This means we are executing on localhost
         # We need to get the external ip address for the local machine
         bkn_wsf = 'http://services.bibsoup.org/cgi-bin/structwsf/bkn_wsf.py'
-        part['ip'] = str(urllib2.urlopen(bkn_wsf,'&service=get_remote_ip').read()).strip()
+        part['user_ip'] = str(urllib2.urlopen(bkn_wsf,'&service=get_remote_ip').read()).strip()
         #urllib.urlopen('http://www.whatismyip.com/automation/n09230945.asp').read()
 
     ##
@@ -170,30 +189,24 @@ class BKNWSF:
         response = ''
         if (k == 'root'):
             response = BKNWSF.part['root'] 
+        elif (k == 'drupal_ip'):
+            response = BKNWSF.part['drupal_ip']
+        elif (k == 'user_ip'):
+            response = BKNWSF.part['user_ip'] 
         return response
-    ##
     @staticmethod
-    def ip(format=''):
-        if (format == 'param'):
-            response = ''
-            if (BKNWSF.part['ip']):
-                response = '&registered_ip='+BKNWSF.part['ip']
-        else:
-            response = BKNWSF.part['ip']
-        return response
-    ## 
-    @staticmethod
-    def structwsf_request (service, params, http_method="post", accept_header="application/json", deb = 0):
+    def structwsf_request (service, params, http_method="post", accept_header="application/json"):
+        deb = Logger.get('level')
 #        if deb:
 #            response = BKNWSF.structwsf_request_curl (service, params, http_method, accept_header, deb = 1)
 #            return response
         
         if (service[-1] != '/'): service += '/' 
-        # as of 6/8/10 the service root to call services uses /ws/
-        # and the service root when referring to a service is /wsf/ws/
-        #s = 'http://people.bibkn.org/ws/'+ service
         s = str(Service.get('root') + service).strip()
-        p = str(params + BKNWSF.ip('param')).strip()
+        # the registered_ip= param has different meaning for this auth service
+        p = params
+        if (service != 'auth/registrar/access/'):    
+            p += str('&registered_ip='+BKNWSF.get('user_ip')).strip()
         response_format = "json"
         header = {"Accept": accept_header.strip()}
         if ((accept_header == 'bibjson') or (accept_header == 'application/iron+json')):
@@ -251,7 +264,7 @@ class BKNWSF:
         # and the service root when referring to a service is /wsf/ws/
         #s = 'http://people.bibkn.org/ws/'+ service
         s = Service.get('root') + service
-        p = params + BKNWSF.ip('param')
+        p = params + '&registered_ip='+BKNWSF.get('user_ip')
         response_format = "json"
         header = {"Accept": accept_header}
         if ((accept_header == 'bibjson') or (accept_header == 'application/iron+json')):
@@ -394,7 +407,7 @@ class BKNWSF:
                 (cgi_fields.getfirst('service') == 'get_remote_ip')):
                 #don't semd end of line for print. We want to return a single line string      
                 print 'Content-type: text/plain \n\n',
-                print str(BKNWSF.ip()),
+                print str(BKNWSF.get('user_ip')),
                 return    
         else:       
             if (cgi_fields):
@@ -525,7 +538,7 @@ class BKNWSF:
 
             #TEST DEBUG OUTPUT
 #            response['service'] =  service
-#            response['ip'] = BKNWSF.ip()
+#            response['user_ip'] = BKNWSF.get('user_ip')
 #            response['dataset_uri'] = Dataset.get()
 #            response['record_uri'] = Record.get()
             #TEST DEBUG OUTPUT
@@ -547,7 +560,7 @@ class BKNWSF:
         # other params: &types= &attributes= &inference= &include_aggregates=
         params += other_params
         response = BKNWSF.structwsf_request('search', params, 'post', 'text/xml')
-        data = Dataset.get('detail',response)
+        data = Dataset.get('description',response)
         return data
 
     ##
@@ -566,7 +579,7 @@ class BKNWSF:
         # other params: attributes= &types= &inference=
         params += other_params
         response = BKNWSF.structwsf_request("browse", params, 'post', 'text/xml')
-        data = Dataset.get('detail',response)
+        data = Dataset.get('description',response)
         return data    
 
 ##
@@ -624,39 +637,44 @@ class Dataset:
             
     ##
     @staticmethod
-    def set (value, k=''):
+    def set (value, k='', access='read_only'):
         '''
         NOTE: When setting uri or id, the root will not be updated unless it is None
         '''
         # Allow call with value = None, return current uri but don't do anything else
         # 
+        response = Dataset.get()
         if (value and (not k)) : # value is either a uri or id
             if ((value[0:2] == '@@') or (value[0:7] == 'http://')): # value is a uri
                 Dataset.set(value, 'uri')
             else: # value is an id
                 Dataset.set(value,'id')            
+            response = Dataset.get()
         elif (value and (k in Dataset.part)):
             if(k == 'id'):
                 if (not Dataset.part['root']):
                     Dataset.make_root(Dataset.part['uri'])
                 Dataset.part['id'] =  unslash_end(value.replace('@','',2))
                 Dataset.part['uri'] =  slash_end(Dataset.part['root'] + Dataset.part['id'])                
-                #Dataset.part['uri'] = Dataset.part['id']
             elif (k == 'uri'):
                 Dataset.part['uri'] =  slash_end(value.replace('@','',2))
-                #Dataset.part['id'] = Dataset.part['uri']
                 if (not Dataset.part['root']):
                     Dataset.make_root(Dataset.part['uri'])
                 Dataset.part['id'] = unslash_end(Dataset.part['uri'].replace(Dataset.part['root'],''))
             elif (k == 'root'):
                 Dataset.part['root'] = slash_end(value)
+            response = Dataset.get()
+        elif (value and (k == 'default_access')):
+            response = Dataset.default_access(value)
+        elif (value and (k == 'public_access')):
+            response = Dataset.public_access(value, access)
 
-        return Dataset.get()            
+        return response            
     
     ##
     @staticmethod
     def get(k='uri', v=''):
-        def get_detailed_response(response):
+        def get_dataset_records(response):
             if (not isinstance(response, dict)): # only an error would return dict    
                 response = BKNWSF.convert_text_xml_to_json(response)   
             if ('error' in response):
@@ -682,8 +700,8 @@ class Dataset:
                             data['recordList'].append(record)
             return data
         
-        if (k == 'detail'):
-            response = get_detailed_response(v)
+        if (k == 'description'):
+            response = get_dataset_records(v)
         else:
             response = Dataset.part[k]
         return response    
@@ -691,28 +709,49 @@ class Dataset:
 
     ##
     @staticmethod
-    def read(ds_uri='', other_params=''):
+    def read(ds_uri='', detail='description', other_params=''):
+        # detail can be: 
+        #  'description' (default) - list with id, creation date, title, and description
+        #  'access' - list with 'description' and access permissions
+        #  'access_detail' - list with 'access' including list of services
+    
         params = '&uri='
         if (ds_uri == 'all'):
-            params += 'all'
+            params += 'all'    # as of 8/30/2010 structwsf returns a bad response for 'all'
         else:
-            params += Dataset.set(ds_uri, 'uri')
-                    
+            params += Dataset.set(ds_uri) # let set figure out if we have an id or uri
         if (other_params): 
             params += other_params
         else:
-            params += '&meta=True' # + '&mode=dataset'
+            params += '&meta=True'
             
         response = BKNWSF.structwsf_request("dataset/read/",params,"get", 'text/xml')
         if (not isinstance(response,dict)):
             response = BKNWSF.convert_text_xml_to_json(response)
+            # info is returned in the 'dataset' attribute not 'recordList'
+            # it gets moved to 'recordList' here for consistency with list records 
+            if ('dataset' in response) and isinstance(response['dataset'],dict):
+                ds_detail = response['dataset']
+                if (detail == 'access') or (detail == 'access_detail'):
+                    ds_detail['access'] = Dataset.access(ds_uri, detail)
+                if ('recordList' not in response):
+                    response['recordList'] = {}             
+                
+                response['recordList'] = ds_detail                    
+#                response['recordList'].append(ds_detail)                    
+                # clear the 'dataset' attribute because it is the same as 'recordList'
+                response['dataset'] = {}
+                
         return response
 
     ##
     @staticmethod
-    def delete(ds_id=''):
-        params = '&uri=' + urllib.quote_plus(Dataset.set(ds_id))
-        response = BKNWSF.structwsf_request("dataset/delete", params, "get") 
+    def delete(ds_uri):
+        if (ds_uri):
+            params = '&uri=' + urllib.quote_plus(Dataset.set(ds_uri))
+            response = BKNWSF.structwsf_request("dataset/delete", params, "get") 
+        else:
+            response = {'error': 'No parameters specified for Record.delete()'}
         return response
         
     ##
@@ -724,59 +763,134 @@ class Dataset:
         params = ds + '&title=' + urllib.quote_plus(title)
         if (description): params += '&description=' + urllib.quote_plus(description)
         response = BKNWSF.structwsf_request("dataset/create", params, "post") 
+        # the create operation gives read_update to creator
         if (not response):
-            response = Dataset.auth_registrar_access(Dataset.get())     
+            # give drupal server read_update
+            response = Dataset.set(Dataset.get(), 'default_access')
+            pass     
         return response
     
     ##
     @staticmethod
-    def auth_registrar_access(ds_id='', action='create'):
-        ds = '&dataset=' + Dataset.set(ds_id)
-        params = ds
-        params += '&ws_uris='
+    def public_access(ds_id='', k='read_only'):
+        # this may need to check if there is already an access record and do an update
+        instance_ip = '0.0.0.0'
+        response = Dataset.auth_registrar_access(ds_id, 'create', instance_ip, 'read_only')
+        return response
+
+    ##
+    @staticmethod
+    def default_access(ds_id=''):
+        # the create operation gives read_update to creator        
+        # defer public access until creator makes an explicit request
+        instance_ip = BKNWSF.get('drupal_ip') #'184.73.164.129'
+        response = Dataset.auth_registrar_access(ds_id, 'create', instance_ip, 'read_update')
+        return response
+    ##
+    @staticmethod
+    def auth_registrar_access(ds_id='', action='create', action_ip='', access='read_only', access_uri=''):
         wsf_service_root = Service.get()
-        services = wsf_service_root+'crud/create/;'
+        services = ''
+        services += wsf_service_root+'crud/create/;'
         services += wsf_service_root+'crud/read/;'
         services += wsf_service_root+'crud/update/;'
         services += wsf_service_root+'crud/delete/;'
         services += wsf_service_root+'search/;'
         services += wsf_service_root+'browse/;'
         services += wsf_service_root+'dataset/read/;'
-        services += wsf_service_root+'datast/delete/;'
+        services += wsf_service_root+'dataset/delete/;'
         services += wsf_service_root+'dataset/create/;'
         services += wsf_service_root+'dataset/update/;'
         services += wsf_service_root+'converter/irjson/;'
+#        services += wsf_service_root+'auth/registrar/ws/;'
+#        services += wsf_service_root+'auth/registrar/access/;'
+#        services += wsf_service_root+'auth/lister/;'
+#        services += wsf_service_root+'auth/validator/;'
+#        services += wsf_service_root+'import/;'
+#        services += wsf_service_root+'export/;'
+#        services += wsf_service_root+'ontology/create/;'
         services += wsf_service_root+'sparql/'
-        permissions = '&crud='+urllib.quote_plus('True;True;True;True')
-        params += urllib.quote_plus(services) + permissions
-        params += '&action='+action
+        services = '&ws_uris='+urllib.quote_plus(services)
+        if (access == 'read_update'):
+            permissions = '&crud='+urllib.quote_plus('True;True;True;True')            
+        else:
+            permissions = '&crud='+urllib.quote_plus('False;True;False;False')
+        if (action_ip == '') : 
+            registered_ip = '&registered_ip='+urllib.quote_plus(BKNWSF.get('user_ip')) #.strip()
+        else :
+            registered_ip = '&registered_ip='+urllib.quote_plus(action_ip.strip())
+        ds = '&dataset=' + Dataset.set(ds_id)            
+        params = ds + services + '&action='+action + permissions + registered_ip
+        if (access_uri):
+            params += '&target_access_uri='+access_uri
         response = BKNWSF.structwsf_request('auth/registrar/access', params)
         return response
     
     ##
     @staticmethod
-    def ids(other_params=''):
-        params = '&mode=dataset'
-        if (other_params): params += other_params
-        response = BKNWSF.structwsf_request("auth/lister", params, "get", 'text/xml')
+    def access (ds_id='', k='concise'):
+        ##
+        # k = 'access_detail' returns list with all services, otherwise list removes service list
+        params = '&mode=access_dataset'
+        params += '&dataset='+Dataset.set(ds_id)
+        response = BKNWSF.structwsf_request("auth/lister/", params, "get", 'text/xml')
         if (isinstance(response,dict)): # only an error would return dict
             response = {'error': response}
         else:
             response = BKNWSF.convert_text_xml_to_json(response)
+            if response:
+                ds_access = {}
+                if isinstance(response,dict) and ('recordList' in response):
+                    for r in response['recordList']:
+                        if ('registeredIP' in r):
+                            registered_ip = str(r['registeredIP'])
+                            if (registered_ip in ds_access):
+                                registered_ip = registered_ip+'::'+microtime_id()
+                            ds_access[registered_ip] = r
+                            # we don't need to return the list of services.
+                            if (k != 'access_detail') and ('webServiceAccess' in ds_access[registered_ip]):
+                                del ds_access[registered_ip]['webServiceAccess']
+                            concise = ''
+                            if ('create' in r) and ('read' in r) and ('update' in r) and ('delete' in r):                                    
+                                if (r['create'] == 'True') and (r['read'] == 'True') and (r['update'] == 'True') and (r['delete'] == 'True'):
+                                    concise = 'full'
+                                elif (r['update'] == 'True') and (r['read'] == 'True'):
+                                    concise = 'read_update'
+                                elif (r['read'] == 'True'):
+                                    concise = 'read_only'
+                                if (r['create'] == 'False') and (r['read'] == 'False') and (r['update'] == 'False') and (r['delete'] == 'False'):
+                                    concise = 'restricted'
+                                ds_access[registered_ip]['concise'] = concise
+                response = ds_access
         return response
+        
     
     ##
     @staticmethod
-    def list(v='detail', other_params=''):    
-        def get_dataset_detail_for_ref(response, ds_ref):
+    def list(v='description', other_params=''):
+        ##
+        # v can be: 
+        #  'id' - simple list of ids 
+        #  'description' - list with id, creation date, title, and description
+        #  'access'(default) - list with 'description' and access permissions
+        #  'access_detail' - list with 'access' including list of services
+        
+        def get_dataset_detail_for_ref(response, ds_ref, detail='access'):
             ds_uri = ds_ref.replace('@@','')
-            ds_root = Dataset.get('root')
-            if (ds_root and (ds_root in ds_uri)):
-                ds = Dataset.read(ds_uri)
-                if ('dataset' in ds) and ('recordList' in response):
-                   response['recordList'].append(ds['dataset'])       
-            
-    # it may be possible to avoid multiple calls by using '&uri=all' with Dataset.read
+            ds_root = Dataset.get('root')            
+            # this test for root filters out some datasets, 
+            # might not want to do this if root is not standard
+            # better to explicitly look for datasets we want to exclude
+            if (ds_root and (ds_uri.find(ds_root) != -1) and ('recordList' in response)):
+                # The following could be replaced after new Dataset.read feature is tested
+                # Dataset.read(ds_uri, v)
+                ds = Dataset.read(ds_uri, detail)                
+                if ('recordList' in ds) and isinstance(ds['recordList'],dict):
+#                    ds_detail = ds['recordList']
+#                    if (detail != 'description'):ds_detail['access'] = Dataset.access(ds_uri, detail)
+                    response['recordList'].append(ds['recordList']) #(ds_detail)                            
+ 
+        # it may be possible to avoid multiple calls by using '&uri=all' with Dataset.read
         response = None
         params = '&mode=dataset'
         if (other_params): params += other_params
@@ -790,16 +904,21 @@ class Dataset:
             if (v == 'ids'):
                 response = ds_ids                
             elif (ds_ids and ('error' not in ds_ids) and ('recordList' in ds_ids)):
+                # v == 'description', 'access', and 'access_detail' handled by get_dataset_detail_for_ref() 
                 ds_root = Dataset.get('root')
                 response = {'recordList':[]}
+                if ('dataset' in ds_ids):
+                    response['dataset'] = ds_ids['dataset']
                 for r in ds_ids['recordList']:
                     if ('li' in r):
+                        # response is updated by get_dataset_detail_for_ref()
+                        # TODO: return response instead of updating
                         if (isinstance(r['li'],dict) and ('ref' in r['li']) and (r['li']['ref'])):
-                            get_dataset_detail_for_ref(response, r['li']['ref'])
+                            get_dataset_detail_for_ref(response, r['li']['ref'], v)
                         else: # it should be an array
                             for d in r['li']:
                                 if ('ref' in d) and (d['ref']):
-                                    get_dataset_detail_for_ref(response, d['ref'])
+                                    get_dataset_detail_for_ref(response, d['ref'], v)
         return response
 
     ##
@@ -1022,7 +1141,14 @@ class Test:
         print
         print
         
-            
+    def test_dataset_list():
+        
+        response = Dataset.list('ids');
+        response = Dataset.list('description')    
+        response = Dataset.list()    
+        response = Dataset.list('access')    
+        response = Dataset.list('access_detail')    
+        
     ##
     @staticmethod
     def autotest(root='http://people.bibkn.org/wsf/'):
@@ -1049,12 +1175,15 @@ class Test:
         if (not response) or ('error' in response): 
             error = True
             print ':error: '+ str(response)
-        print "skip Dataset.list()"
-        #response = Dataset.list()
+        #print "skip Dataset.list()"
+        print "Dataset.list() "
+        response = Dataset.list()
         if (not response) or ('error' in response): 
             error = True
             print ':error: '+ str(response)
-        print Dataset.set('dataset_test')
+        
+        
+        print Dataset.set('dataset_test_'+microtime_id()) #need unique name for multi-user use
         print "Dataset.create() ", Dataset.get()
         try:
             response = Dataset.create() # this calls auth_registar_access
@@ -1129,7 +1258,7 @@ class Test:
             if dataset_created:
                 print '\n\nCleaning up ...'
                 print "Dataset.delete() "
-                response = Dataset.delete()
+                response = Dataset.delete(Dataset.get())
                 if (response):
                     error = True 
                     print '\n\nTEST FAILED.\n'
@@ -1145,7 +1274,9 @@ class Test:
         response = {}
         #instance = 'http://www.bibkn.org/wsf/'
         instance = 'http://datasets.bibsoup.org/wsf/'
-        #Test.autotest(instance)
+        Logger.set(0,'level')
+
+        Test.autotest(instance)
         
         BKNWSF.set(instance,'root')
         Service.set(BKNWSF.get()+'ws/','root')    
@@ -1153,78 +1284,40 @@ class Test:
         Dataset.set('dataset_test')
         #BKNWSF.web_proxy_services(None)
 
+
+#        response = BKNWSF.search('Pitman') 
+#        response = BKNWSF.search('Pitman', 'all', 10, 0, other_params) 
+#        response = BKNWSF.browse(None,1)
         
-        Dataset.set('ja7')
-        record_id = 'jack_alves_1'
-        bibjson = {"name": "update test","id": record_id, "type":"Object", "status":"tested"}
-        response = Record.update(bibjson)                 
-        
-#        print "Record.update() "        
+#        Dataset.set('dataset_test_'+microtime_id()) #need unique name for multi-user use
+#        response = Dataset.create() 
+#        record_id = '1'
+#        bibjson = {"name": "test","id": record_id, "type":"Object", "status":"tested"}
+#        response = Record.add(bibjson)                 
+#        response = Record.read(Record.set('1'))  
+#        bibjson = {"name": "update test","id": Record.get('id'), "type":"Object", "status":"tested"}
 #        response = Record.update(bibjson)                 
-#        if (response): 
-#            print ':error: '+ str(response)
-#        else:            
-#            print "Record.read() "
-#            response = Record.read()
-#            if (not response) or ('error' in response): 
-#                print ':error: '+ str(response)
+#        response = BKNWSF.browse()        
+            
+#        response = Dataset.set(Dataset.get(), 'default_access')    
+#        response = Dataset.set(Dataset.get(), 'public_access')
+#        instance_ip = '184.73.164.129'
+#        instance_ip = '0.0.0.0'
+#        response = Dataset.auth_registrar_access(Dataset.get(), 'update', instance_ip, 'read_update', access_uri)        
 
-        #response = Dataset.create() # this calls auth_registar_access
-        #init_logging()
-        #'http://datasets.bibsoup.org/wsf/datasets/'
-        #Dataset.set('demo')
-        print
-        #Dataset.set('jack_sand')
-        #params = '&mode=access_dataset&dataset='+ Dataset.get('uri')
-        #ds_ids = BKNWSF.structwsf_request("auth/lister", params, "get", 'text/xml')
-        #print ds_ids
-        
-        
-        #response = Dataset.list('ids');
-        print simplejson.dumps(response, indent=2)
-        print
-        print
-        
-        response = BKNWSF.browse()
-        #response = Dataset.list();
-        #response = Dataset.list('ids');
-        #response = Dataset.list('detail')    
-        #response = Dataset.read('all') #THIS GIVE BAD JSON ERROR
-        #response = Dataset.read(Dataset.set('sandbox'))
-        
+
         #response = create_and_import(Dataset.set('jack_test_create'), 'in.json')    
-        #response = Dataset.auth_registrar_access(Dataset.get(), 'create')     
         #response = data_import(Dataset.set('jack_test_create'), 'in.json')
-        #response = Record.read(Record.set('1'))  
-        #response = BKNWSF.search('Pitman') 
-        #response = BKNWSF.search('Pitman', 'all', 10, 0, other_params) 
-        #response = BKNWSF.browse(None,1)
-        print simplejson.dumps(response, indent=2)
-        print '\n'    
-        # TEST
-#        ds_ids = {'recordList': [ 
-#           {
-#            "id": "",
-#            "type": "Bag",
-#            "li": 
-#            {
-#            "ref": "" 
-#            }
-#            }]}        
-#        for r in ds_ids['recordList']:
-#            if ('li' in r):
-#                if (isinstance(r['li'], dict)):
-#                    ds_uri = r['li']['ref'].replace('@@','')
-#                    print 'after: ',ds_uri
-#                else:
-#                    for d in r['li']:
-#                        print 'd type:',
-#                        print type(d)
-#                        
-#                        if ('ref' in d):
-#                           ds_uri = d['ref'].replace('@@','')
-
         
+#        response = Dataset.list('ids');
+#        response = Dataset.list('description')    
+#        response = Dataset.list('access')    
+#        response = Dataset.list('access_detail')    
+#        response = Dataset.read('all') #THIS GIVE BAD JSON ERROR
+        
+
+        print simplejson.dumps(response, indent=2)
+        print '\n'          
         if (('recordList' in response) and response['recordList']):
             # you can get total results by calling
             facets = get_result_facets(response)
@@ -1253,7 +1346,6 @@ class Test:
         other_params = ''    
         
         # Jack Alves modified because Dataset id/uri behavior was updated
-        
         #response = create_and_import(ds.part['id'], '/Users/Jim/Desktop/Bibkn/hku_idify.json',testlimit=1,import_interval = 2000)    
         ds_id = 'mass_import_test3'
         ds_uri = Dataset.set(ds_id)
