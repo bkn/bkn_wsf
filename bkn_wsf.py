@@ -56,24 +56,13 @@
 # to the Bibliographic Knowledge Network (http://www.bibkn.org) project 
 # under NSF Grant Award No. 0835851.
 #
-#
-# CHANGES since last check-in:
-#
-# added methods for setting and reading auth
-#        response = Dataset.set(Dataset.get(), 'default_access')    
-#        response = Dataset.set(Dataset.get(), 'public_access')
-#        response = Dataset.auth_registrar_access(Dataset.get(), 'update', instance_ip, 'read_update', access_uri)        
-#        response = Dataset.list('ids');
-#        response = Dataset.list('description')    
-#        response = Dataset.list('access')    
-#        response = Dataset.list('access_detail')
-# new parameter for Dataset.read() added before last 'other_params' parameter
-#        response = Dataset.read(ds_id, 'description')    
-#        response = Dataset.read(ds_id, 'access')    
-#        response = Dataset.read(ds_id, 'access_detail')
-#
-# Dataset.delete default for parameter removed
-#
+
+
+'''
+ CHANGES since last check-in:
+
+'''
+
 
 import re, os, logging
 from logging import handlers
@@ -161,6 +150,8 @@ def unslash_end (s):
 ## BKNWSF is manage the structwsf instance root uri, and includes methods for operations
 # which are not specific to a dataset. 
 class BKNWSF:
+    '''
+    '''
     part = {
         'root': '',
         'user_ip': os.getenv("REMOTE_ADDR"),
@@ -179,13 +170,20 @@ class BKNWSF:
 
     ##
     @staticmethod
-    def set (value, k):
+    def set (value, k):    
+        '''
+        Set the root of the structwsf system. This is generally the domain name with the suffix /wsf.
+        Before attempting any operation, the structwsf instance (repository) root must be set.
+        bkn_wsf uses the root to construct roots for structwsf service calls and for datasets. 
+        '''
         if (k == 'root'):
             BKNWSF.part[k] = slash_end(value)
         return BKNWSF.get()
-    ##
     @staticmethod
     def get(k='root'):
+        '''
+        Get the root of the structwsf system.  This is generally the domain name with the suffix /wsf.
+        '''
         response = ''
         if (k == 'root'):
             response = BKNWSF.part['root'] 
@@ -196,6 +194,9 @@ class BKNWSF:
         return response
     @staticmethod
     def structwsf_request (service, params, http_method="post", accept_header="application/json"):
+        '''
+        This is the single point of access to structWSF services.
+        '''
         deb = Logger.get('level')
 #        if deb:
 #            response = BKNWSF.structwsf_request_curl (service, params, http_method, accept_header, deb = 1)
@@ -259,6 +260,9 @@ class BKNWSF:
     ##
     @staticmethod
     def structwsf_request_curl (service, params, http_method="post", accept_header="application/json", deb = 0):
+        '''
+        This will be deprecated and a curl option will be added to the primary structwsf_request 
+        '''
         if (service[-1] != '/'): service += '/' 
         # as of 6/8/10 the service root to call services uses /ws/
         # and the service root when referring to a service is /wsf/ws/
@@ -383,8 +387,11 @@ class BKNWSF:
     @staticmethod
     def web_proxy_services (cgi_fields):
         '''
-        TO TEST SET, if 1:
+        This facilitates use of bkn_wsf from client-side javascript applications.
         '''
+
+        
+        # TO TEST SET, if 1:
         if 0:
             bkn_root = 'http://datasets.bibsoup.org/wsf/'
             #bkn_root = 'http://people.bibkn.org/wsf/'
@@ -549,6 +556,18 @@ class BKNWSF:
     ##
     @staticmethod
     def search(query, ds_uris='', items=10, page=0, other_params='&include_aggregates=true'):
+        '''
+        ds_uris can accept more than one uri and defaults to current dataset if none is passed.
+        Unlike many bkn_wsf methods Browse does not call 'Dataset.set' to make the ds_uri the current/default
+        dataset uri. Use 'all' to specify all datasets
+        
+        The associated structWSF service supports filtering results by specified types and attributes.
+        'other_params' can be used to specify filtering parameters.
+        
+        Use 'items' for page size.
+        Increment the 'page' parameter to page through results. 
+        '''
+
         if not ds_uris: ds_uris = Dataset.get('uri')
         params = '&query=' + query
         # ds_uris can accept multiple uris so we don't want to update the Dataset object
@@ -560,17 +579,29 @@ class BKNWSF:
         # other params: &types= &attributes= &inference= &include_aggregates=
         params += other_params
         response = BKNWSF.structwsf_request('search', params, 'post', 'text/xml')
-        data = Dataset.get('description',response)
+        data = Dataset.get('record_data',response)
         return data
 
     ##
     @staticmethod
     def browse(ds_uris='', items='10', page='0', other_params='&include_aggregates=True'):
-        # This is kind of an export.
+        '''
+        Browse is a kind of export service. A common use is to page through datasets. 
+        Returns irjson with list of records for specified datasets.
+        
+        ds_uris can accept more than one uri and defaults to current dataset if none is passed.
+        Unlike many bkn_wsf methods Browse does not call 'Dataset.set' to make the ds_uri the current/default
+        dataset uri. Use 'all' to specify all datasets
+        
+        The associated structWSF service supports filtering results by specified types and attributes.
+        'other_params' can be used to specify filtering parameters.
+
+        Use 'items' for page size.
+        Increment the 'page' parameter to page through results. 
+        '''
+        
         params = ''
-        # ds_uris can accept multiple uris so we don't want to update the Dataset object
-        # Default to curremt datast if none is passed
-        # This means 'all' needs to be explicitly passed to search all datasets
+        
         if (not ds_uris): 
             ds_uris = Dataset.get('uri')
         params += '&datasets=' + ds_uris
@@ -579,31 +610,40 @@ class BKNWSF:
         # other params: attributes= &types= &inference=
         params += other_params
         response = BKNWSF.structwsf_request("browse", params, 'post', 'text/xml')
-        data = Dataset.get('description',response)
+        data = Dataset.get('record_data',response)
         return data    
-
 ##
 class Service:
+    '''
+    This may be deprecated and merged into BKNWSF. 
+    This is currently used for the root structwsf service uri which is typically the bkn_wsf root with /ws
+    '''
     part = {
         'root': ''
             }
     ##
     @staticmethod
     def set (value, k):
+        '''
+        '''
         if (k == 'root'):
             Service.part[k] = slash_end(value)
         return Service.get()
     ##
     @staticmethod
     def get(v='root'):
+        '''
+        '''
         return Service.part[v]
     
     
 ##
 class Dataset:
     '''
-    CHECK FOR VALID PATHS - NO SPACES OR WEIRD CHARS
+    A primary class for operations related to a specified dataset.
     '''    
+#    TODO: CHECK FOR VALID PATHS - NO SPACES OR WEIRD CHARS
+
     part = {
         'root': '',
         'uri': '',
@@ -639,8 +679,23 @@ class Dataset:
     @staticmethod
     def set (value, k='', access='read_only'):
         '''
-        NOTE: When setting uri or id, the root will not be updated unless it is None
+        Set the current uri by specifying either a uri or an id. In either case, the other is constructed
+        by adding or removing the dataset root. When setting uri or id, the root will not be updated 
+        unless it is None. k can be used to explicity specify the value is a root, uri or id. In each case, the returns 
+        value is the uri.
+        
+        k is also used to to request the permission setting service. When used for permissions 
+        the parameter specifies the permission operation to be performed. The 'default_access' option 
+        adds full permission for the drupal server associated with the repository. 'public_access' sets
+        read_only permission for 0.0.0.0 but the 'access' can be used to set other permissions. The 
+        access parameter can be one of,
+        
+            'read_only'    - read is True, other permissions are False
+            'read_update'  - read and update are True, create and delete are False 
+            'restricted'   - all access False (even though there is a permission record)
+            'full'         - all access True              
         '''
+        
         # Allow call with value = None, return current uri but don't do anything else
         # 
         response = Dataset.get()
@@ -674,7 +729,16 @@ class Dataset:
     ##
     @staticmethod
     def get(k='uri', v=''):
-        def get_dataset_records(response):
+        '''
+        k used to request the current dataset uri, id, or root. k is also used to parse a response from 
+        the structWSF browse and search services which return only lists of ids. 
+        
+        Dataset.get('record_data') iterates through a list extracting record uris and calling
+        Record.read to get attributes and values. When used in this way, the v parameter should be
+        the text/xml response from browse or search. An irjson list with all record_data is returned.
+        '''
+        
+        def get_dataset_info(response):
             if (not isinstance(response, dict)): # only an error would return dict    
                 response = BKNWSF.convert_text_xml_to_json(response)   
             if ('error' in response):
@@ -700,8 +764,8 @@ class Dataset:
                             data['recordList'].append(record)
             return data
         
-        if (k == 'description'):
-            response = get_dataset_records(v)
+        if (k == 'record_data'):
+            response = get_dataset_info(v)
         else:
             response = Dataset.part[k]
         return response    
@@ -710,11 +774,21 @@ class Dataset:
     ##
     @staticmethod
     def read(ds_uri='', detail='description', other_params=''):
-        # detail can be: 
-        #  'description' (default) - list with id, creation date, title, and description
-        #  'access' - list with 'description' and access permissions
-        #  'access_detail' - list with 'access' including list of services
-    
+        '''
+         detail can be: 
+          'description' (default) - list with id, creation date, title, and description
+          'access' - list with 'description' and access permissions
+          'access_detail' - list with 'access' including list of services
+         
+         bkn_wsf reformats the structwsf response. When access is specified an atttribute called 
+         'concise' is added to describe common access cases with a single value.
+         
+            'read_only'    - read is True, other permissions are False
+            'read_update'  - read and update are True, create and delete are False 
+            'restricted'   - all access False (even though there is a permission record)
+            'full'         - all access True              
+          
+        '''    
         params = '&uri='
         if (ds_uri == 'all'):
             params += 'all'    # as of 8/30/2010 structwsf returns a bad response for 'all'
@@ -747,6 +821,9 @@ class Dataset:
     ##
     @staticmethod
     def delete(ds_uri):
+        '''
+        Delete removes the dataset without warning. The current dataset is not used as a default.
+        '''
         if (ds_uri):
             params = '&uri=' + urllib.quote_plus(Dataset.set(ds_uri))
             response = BKNWSF.structwsf_request("dataset/delete", params, "get") 
@@ -757,6 +834,10 @@ class Dataset:
     ##
     @staticmethod
     def create(ds_id='', title='', description=''):
+        '''
+        Create a dataset and give it default access which is full access for the creator and the
+        Drupal server associated with the repository. 
+        '''
         ds = '&uri=' + Dataset.set(ds_id) # urllib.quote_plus(Dataset.set(ds_id))
         # Parameter default for title is not used because ds_id may be passed in
         if (not title): title = Dataset.get('id') 
@@ -784,11 +865,22 @@ class Dataset:
         # the create operation gives read_update to creator        
         # defer public access until creator makes an explicit request
         instance_ip = BKNWSF.get('drupal_ip') #'184.73.164.129'
-        response = Dataset.auth_registrar_access(ds_id, 'create', instance_ip, 'read_update')
+        response = Dataset.auth_registrar_access(ds_id, 'create', instance_ip, 'full')
         return response
     ##
     @staticmethod
     def auth_registrar_access(ds_id='', action='create', action_ip='', access='read_only', access_uri=''):
+        '''
+        Set or update permissions for a specified ip address. The access parameter can be,
+
+            'read_only'    - read is True, other permissions are False
+            'read_update'  - read and update are True, create and delete are False 
+            'full'         - all access True              
+            'no_delete'    - all access True, expect for delete              
+
+        If action='update' an  access_uri is expected. 
+        
+        '''
         wsf_service_root = Service.get()
         services = ''
         services += wsf_service_root+'crud/create/;'
@@ -811,10 +903,16 @@ class Dataset:
 #        services += wsf_service_root+'ontology/create/;'
         services += wsf_service_root+'sparql/'
         services = '&ws_uris='+urllib.quote_plus(services)
-        if (access == 'read_update'):
+        if (access == 'full'):
             permissions = '&crud='+urllib.quote_plus('True;True;True;True')            
-        else:
+        elif (access == 'read_update'):
+            permissions = '&crud='+urllib.quote_plus('False;True;True;False')            
+        elif (access == 'read_only'):
             permissions = '&crud='+urllib.quote_plus('False;True;False;False')
+        elif (access == 'no_delete'):
+            permissions = '&crud='+urllib.quote_plus('True;True;False;False')
+        else:
+            permissions = '&crud='+urllib.quote_plus('False;False;False;False')
         if (action_ip == '') : 
             registered_ip = '&registered_ip='+urllib.quote_plus(BKNWSF.get('user_ip')) #.strip()
         else :
@@ -829,6 +927,8 @@ class Dataset:
     ##
     @staticmethod
     def access (ds_id='', k='concise'):
+        '''
+        '''
         ##
         # k = 'access_detail' returns list with all services, otherwise list removes service list
         params = '&mode=access_dataset'
@@ -868,12 +968,18 @@ class Dataset:
     ##
     @staticmethod
     def list(v='description', other_params=''):
-        ##
-        # v can be: 
-        #  'id' - simple list of ids 
-        #  'description' - list with id, creation date, title, and description
-        #  'access'(default) - list with 'description' and access permissions
-        #  'access_detail' - list with 'access' including list of services
+        '''
+        Returns a list of datasets with specified information. v is used to specify the level of detail.
+        
+            'id' - simple list of ids 
+            'description' - list with id, creation date, title, and description
+            'access'(default) - list with 'description' and access permissions
+            'access_detail' - list with 'access' including list of services       
+            
+        Note: As of this writing, operations with more detail than 'id' can take a long time 
+        (8+ seconds) to respond because multiple requests are made for each dataset.
+        This may be resolved in the near future.         
+        '''
         
         def get_dataset_detail_for_ref(response, ds_ref, detail='access'):
             ds_uri = ds_ref.replace('@@','')
@@ -924,22 +1030,19 @@ class Dataset:
     ##
     @staticmethod
     def template():
+        '''
+        Return a default irjson template
+        '''
         return Dataset.part['template']
     
 
 ##
 class Record:
     '''
-    CHECK FOR VALID PATHS - NO SPACES OR WEIRD CHARS
+    A primary class for operations related to a specified record.
     '''
-    '''
-    RECENTLY LEARNED ID=URI SO MUCH OF THIS CODE CAN BE CLEANED UP
-    
-    CHECK FOR ID VS. URI BY LOOKING AT @ VERSUS @@
-    
-    SET ID BY STRIPPING DATASET_URI
-    SET URI BY ADDING DATASET_URI
-    '''
+#    TODO: CHECK FOR VALID PATHS - NO SPACES OR WEIRD CHARS
+
     part = {
         'uri': '',
         'id': ''   
@@ -947,6 +1050,10 @@ class Record:
     ##
     @staticmethod
     def set (value, k=''):        
+        '''
+        Set the record uri.  if an id is passed, a uri will be constructed using the current dataset uri.
+        The uri is returned.
+        '''
         if (value and (not k)) : # value should be either a uri or id            
             if ((value[0:2] == '@@') or (value[0:7] == 'http://')): # value is a uri                    
                 Record.set(value, 'uri')
@@ -968,6 +1075,9 @@ class Record:
     ##
     @staticmethod
     def get (v='uri', k=''):
+        '''
+        Return the current record uri
+        '''
         response = Record.part['uri']
         if (k and (k == 'id')):
             response = Record.part['id']            
@@ -976,6 +1086,11 @@ class Record:
     ##
     @staticmethod
     def read(record_id='', ds_id='', other_params=''):
+        '''
+        read a single record from specified dataset.
+        Defaults to read current record from current dataset
+        '''
+
         params = ''
         #params += '&include_linksback=True&include_reification=True'
         # if an id is none 'set' will return the current uri
@@ -990,13 +1105,19 @@ class Record:
     @staticmethod
     def update(record, ds_id=''):
         '''
-            record should have an id
-            SHOULD SET Record.set() id, need to test for recordList or 'id'
-            
-            SEEMS LIKE STRUCTWSF PREPENDS DATASET URI TO RECORD ID
-            SO THE RECORD ID IN BIBJSON MUST NOT INCLUDE THE DATASET URI
-            
+        update is like performing a record delete and create.
+        Record must be valid irjson format with or without the 'dataset' section. If the 'dataset'
+        section is not included the default template will be used.
+        
+        The current dataset is used if none is specified.
+        
+        Record should have an id. structwsf constructs the record uri by prepending the dataset uri. 
+        If a record uri is inadvertently used for the id then the id will look like a uri because
+        structwsf still prepends the dataset uri.            
         '''
+
+#        TODO: test for valid 'id' in record
+
         Dataset.set(ds_id) #Dataset.set(ds_id, 'uri')
         response = None
         rdf = None
@@ -1030,26 +1151,33 @@ class Record:
             
             response = BKNWSF.structwsf_request("crud/update", params,"post",'*/*')
         
-        #TEST DEBUG OUTPUT
-#        response = {}
-#        response['update_call_bibjson'] = bibjson
-#        response['update_call_params'] = params
-        #TEST DEBUG OUTPUT
-        
-        
         return response
     
-    '''
-    /crud/create will add attributes and/or attribute values to an existing record.
-    all existing data will remain the same.
-    '''
     ##
     @staticmethod
     def add (record, ds_id=''):
         '''
-            record should have an id
-            SHOULD SET Record.set() id, need to test for recordList or 'id'        
+        Create a new record or add attributes and values to an existing record.
+        
+        If Record.add the record id already exists the new record data adds to the existing data. 
+        If you send record data that contains an attribute in the existing record, 
+        and the value of the attribute is different, then that value is added to the attribute 
+        (the value becomes an array of values). (All structwsf data is ultimately stored as RDF triples. 
+        In the case described, a new triple is written.)        
+
+        Record must be valid irjson format with or without the 'dataset' section. If the 'dataset'
+        section is not included the default template will be used.
+        
+        The current dataset is used if none is specified.
+        
+        Record should have an id. structwsf constructs the record uri by prepending the dataset uri. 
+        If a record uri is inadvertently used for the id then the id will look like a uri because
+        structwsf still prepends the dataset uri.            
+
         '''
+        
+#        TODO: check for valid id
+        
         response = None
         rdf = None
         bibjson = {}
@@ -1087,9 +1215,12 @@ class Record:
     @staticmethod
     def delete (record_uri, dataset_uri):
         '''
-        No default parameters because we don't want inadvertent delete of the current record.
-        Parameters can be ids or uris. They are converted to uris
+        Remove a record. There are no default parameters. 
+        URIs must be specified. Ids are not converted to uris.
         '''
+        
+#        TODO: accept Ids
+
         if (record_uri and dataset_uri):
             params = ''
             params += '&uri=' + record_uri
