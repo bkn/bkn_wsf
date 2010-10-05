@@ -1565,7 +1565,7 @@ def data_import(ds_id, datasource, testlimit = None, start=0, import_interval=1)
     f_hku.close()
     bib_import = {}
     bib_import['dataset'] = bibjson['dataset']
-    bib_import['dataset']['id'] = Dataset.get('id') #Dataset.get('uri')
+    bib_import['dataset']['id'] = Dataset.get('uri') # Dataset.get('id')
 # SET TO TEST
     count = 0
     status = {'code': 'ok'}
