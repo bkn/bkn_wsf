@@ -255,6 +255,8 @@ class BKNWSF:
             response = {'error':'simplejsonError','reason':'bad json', "response":response}
         
         #print '\nWSF CALL RESPONSE:\n', response        
+#        Test.test_data['wsf'].append({'request':''+s+'?'+p})
+
         return response
     
     ##
@@ -389,10 +391,9 @@ class BKNWSF:
         '''
         This facilitates use of bkn_wsf from client-side javascript applications.
         '''
-
-        
-        # TO TEST SET, if 1:
-        if 0:
+#        Test.test_data['wsf'] = []
+       
+        if 0: # TO TEST SET, if 1:
             bkn_root = 'http://datasets.bibsoup.org/wsf/'
             #bkn_root = 'http://people.bibkn.org/wsf/'
             service_root = bkn_root+'ws/'
@@ -468,6 +469,11 @@ class BKNWSF:
                 if (not response): 
                     response = {} # need to make sure to return a dict not ""
                     error = True
+            elif service == 'dataset_list_ids':
+                response = Dataset.list('id_list')  
+                if (not response): 
+                    response = {} # need to make sure to return a dict not ""
+                    error = True
             elif service == 'dataset_list':
                 response = Dataset.list()  
                 if (not response): 
@@ -484,8 +490,12 @@ class BKNWSF:
                 response = Dataset.create(dataset_uri, title, description)
                 if (response): 
                     error = True
+                    response['params'] = urllib.quote_plus(cgi_fields.getfirst('params'))
                 else:
                     response = {} # need to make sure to return a dict not ""
+#                    response['wsf'] = Test.test_data['wsf']
+#                    response['user_ip'] = BKNWSF.get('user_ip')
+                    
             elif service == 'dataset_delete':
                 '''
                 Need to test, may not ever enable this as a service
@@ -540,12 +550,12 @@ class BKNWSF:
             #response = simplejson.dumps(bigd)#.replace('\n','<br>').replace('  ','&nbsp;&nbsp;')
             #if 'jsonp' in cgi_fields: callback  = cgi_fields.getfirst('jsonp') 
             #response = browse(ds_id, 10, 0, '')      
-            if error:
-                response['params'] = urllib.quote_plus(cgi_fields.getfirst('params'))
-
+#            if error:
+#                response['params'] = urllib.quote_plus(cgi_fields.getfirst('params'))
+#            response['testdata'] = []
+#            response['testdata'].append(Test.test_data)
             #TEST DEBUG OUTPUT
-#            response['service'] =  service
-#            response['user_ip'] = BKNWSF.get('user_ip')
+#            response['service'] =  service            
 #            response['dataset_uri'] = Dataset.get()
 #            response['record_uri'] = Record.get()
             #TEST DEBUG OUTPUT
@@ -575,7 +585,9 @@ class BKNWSF:
         # This means 'all' needs to be explicitly passed to search all datasets
         params += '&datasets=' + ds_uris
         if (items): params += '&items='+str(items)
-        if (page):  params += '&page='+str(page)
+        start = str(int(items)*int(page)) 
+        # the structwsf page param is really an item start value
+        if (page):  params += '&page='+str(start)
         # other params: &types= &attributes= &inference= &include_aggregates=
         params += other_params
         response = BKNWSF.structwsf_request('search', params, 'post', 'text/xml')
@@ -584,7 +596,7 @@ class BKNWSF:
 
     ##
     @staticmethod
-    def browse(ds_uris='', items='10', page='0', other_params='&include_aggregates=True'):
+    def browse(ds_uris='', items=10, page=0, other_params='&include_aggregates=True'):
         '''
         Browse is a kind of export service. A common use is to page through datasets. 
         Returns irjson with list of records for specified datasets.
@@ -600,13 +612,14 @@ class BKNWSF:
         Increment the 'page' parameter to page through results. 
         '''
         
-        params = ''
-        
+        params = ''        
         if (not ds_uris): 
             ds_uris = Dataset.get('uri')
         params += '&datasets=' + ds_uris
         if (items): params += '&items='+str(items)
-        if (page):  params += '&page='+str(page)
+        start = str(int(items)*int(page)) 
+        # the structwsf page param is really an item start value
+        if (page):  params += '&page='+str(start)
         # other params: attributes= &types= &inference=
         params += other_params
         response = BKNWSF.structwsf_request("browse", params, 'post', 'text/xml')
@@ -866,6 +879,10 @@ class Dataset:
         # defer public access until creator makes an explicit request
         instance_ip = BKNWSF.get('drupal_ip') #'184.73.164.129'
         response = Dataset.auth_registrar_access(ds_id, 'create', instance_ip, 'full')
+        instance_ip = BKNWSF.get('user_ip')
+        if (instance_ip != BKNWSF.get('drupal_ip')):
+            response = Dataset.auth_registrar_access(ds_id, 'create', instance_ip, 'full')
+        
         return response
     ##
     @staticmethod
@@ -911,7 +928,7 @@ class Dataset:
             permissions = '&crud='+urllib.quote_plus('False;True;False;False')
         elif (access == 'no_delete'):
             permissions = '&crud='+urllib.quote_plus('True;True;False;False')
-        else:
+        else: # 'restricted'
             permissions = '&crud='+urllib.quote_plus('False;False;False;False')
         if (action_ip == '') : 
             registered_ip = '&registered_ip='+urllib.quote_plus(BKNWSF.get('user_ip')) #.strip()
@@ -990,7 +1007,11 @@ class Dataset:
             if (ds_root and (ds_uri.find(ds_root) != -1) and ('recordList' in response)):
                 # The following could be replaced after new Dataset.read feature is tested
                 # Dataset.read(ds_uri, v)
-                ds = Dataset.read(ds_uri, detail)                
+                # id_list just reformats data so the uri is the id value
+                if (v == 'id_list'): 
+                    ds = {'recordList':{'id':ds_uri}}
+                else:
+                    ds = Dataset.read(ds_uri, detail)                
                 if ('recordList' in ds) and isinstance(ds['recordList'],dict):
 #                    ds_detail = ds['recordList']
 #                    if (detail != 'description'):ds_detail['access'] = Dataset.access(ds_uri, detail)
@@ -1233,6 +1254,7 @@ class Record:
         
 
 class Test:  
+    test_data = {} # use this for debugging web_proxy services. Log data then include in response
     @staticmethod
     def test_dataset_setting():
         print "Dataset.set test init"
